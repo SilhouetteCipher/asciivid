@@ -1,0 +1,3508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ASCIIVD — dither &amp; ascii video lab</title>
+<style>
+:root{
+  --bg:#0b0b0c;
+  --panel:#111113;
+  --panel2:#161619;
+  --line:#26262b;
+  --line2:#34343b;
+  --txt:#e7e7e4;
+  --dim:#8c8c92;
+  --dimmer:#5c5c63;
+  --sig:#ff5b1f;
+  --ok:#9dff3d;
+  --font:ui-monospace,SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--txt);font:12px/1.4 var(--font);
+  -webkit-font-smoothing:antialiased;overflow:hidden;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#2b2b31;border:2px solid var(--panel)}
+::-webkit-scrollbar-track{background:var(--panel)}
+
+/* ---------- shell ---------- */
+#app{display:grid;grid-template-columns:290px 1fr 250px;grid-template-rows:38px minmax(0,1fr);height:100vh}
+header{
+  grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 12px;
+  background:var(--panel);border-bottom:1px solid var(--line);
+}
+header .brand{font-weight:700;letter-spacing:.22em;font-size:11px}
+header .brand span{color:var(--sig)}
+header .meta{color:var(--dimmer);font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+header .spacer{flex:1}
+.hbtn{
+  background:transparent;border:1px solid var(--line2);color:var(--txt);
+  padding:4px 10px;cursor:pointer;letter-spacing:.1em;font-size:10px;text-transform:uppercase;
+}
+.hbtn:hover{border-color:var(--sig);color:var(--sig)}
+.hbtn.primary{border-color:var(--sig);color:var(--sig)}
+.hbtn.primary:hover{background:var(--sig);color:#000}
+.hbtn.rec.armed{background:var(--sig);color:#000;border-color:var(--sig)}
+
+/* ---------- sidebars ---------- */
+aside{background:var(--panel);overflow-y:auto;overflow-x:hidden}
+aside.left{border-right:1px solid var(--line)}
+aside.right{border-left:1px solid var(--line)}
+.group{border-bottom:1px solid var(--line)}
+.group>h3{
+  margin:0;padding:8px 10px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--dim);cursor:pointer;display:flex;align-items:center;gap:7px;user-select:none;
+  background:var(--panel);position:sticky;top:0;z-index:2;
+}
+.group>h3:hover{color:var(--txt)}
+.group>h3::before{content:"−";color:var(--sig);width:9px;display:inline-block}
+.group.collapsed>h3::before{content:"+"}
+.group.collapsed .gbody{display:none}
+.gbody{padding:4px 10px 10px}
+.row{display:grid;grid-template-columns:78px 1fr 42px;align-items:center;gap:7px;margin:5px 0;min-height:19px}
+.row>label{color:var(--dim);font-size:10px;letter-spacing:.06em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row.wide{grid-template-columns:78px 1fr}
+.row .val{color:var(--sig);font-size:10px;text-align:right;font-variant-numeric:tabular-nums}
+.row.dirty>label{color:var(--txt)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:16px;background:transparent;cursor:ew-resize}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--line2)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:14px;background:var(--txt);margin-top:-6px;border-radius:0}
+input[type=range]:hover::-webkit-slider-thumb{background:var(--sig)}
+select,input[type=text],input[type=number]{
+  width:100%;background:var(--panel2);border:1px solid var(--line);padding:3px 5px;font-size:11px;border-radius:0;
+}
+select:focus,input:focus{outline:none;border-color:var(--sig)}
+input[type=color]{width:100%;height:20px;padding:0;background:none;border:1px solid var(--line);cursor:pointer}
+.chk{display:flex;align-items:center;gap:6px;cursor:pointer}
+.chk input{accent-color:var(--sig);width:12px;height:12px;margin:0;cursor:pointer}
+.btnrow{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.mini{
+  flex:1;min-width:56px;background:var(--panel2);border:1px solid var(--line);padding:4px 5px;
+  cursor:pointer;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
+}
+.mini:hover{border-color:var(--sig);color:var(--sig)}
+.mini.on{border-color:var(--sig);color:var(--sig)}
+.note{color:var(--dimmer);font-size:10px;line-height:1.5;margin:6px 0 0}
+
+/* ---------- stage ---------- */
+/* min-height:0 on main and #stage lets the stage shrink to what's left above the
+   transport, so a tall (9:16) frame scales down instead of pushing the timeline off. */
+main{display:flex;flex-direction:column;background:#000;min-width:0;min-height:0}
+#stage{
+  flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;
+  background:
+    linear-gradient(45deg,#0e0e10 25%,transparent 25%,transparent 75%,#0e0e10 75%),
+    linear-gradient(45deg,#0e0e10 25%,#0a0a0b 25%,#0a0a0b 75%,#0e0e10 75%);
+  background-size:16px 16px;background-position:0 0,8px 8px;
+}
+#out{max-width:100%;max-height:100%;image-rendering:pixelated;box-shadow:0 0 0 1px var(--line)}
+#drop{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;color:var(--dim);text-align:center;background:rgba(0,0,0,.72);z-index:5;
+}
+#drop.hide{display:none}
+#drop.hot{background:rgba(255,91,31,.12);color:var(--sig)}
+#drop h2{font-size:13px;letter-spacing:.3em;margin:0;text-transform:uppercase}
+#maskLayer{position:absolute;pointer-events:none;display:none}
+#maskLayer.on{display:block}
+#stage.drawing #maskLayer{pointer-events:auto;cursor:crosshair}
+#maskhint{
+  position:absolute;left:50%;transform:translateX(-50%);bottom:10px;display:none;
+  background:rgba(0,0,0,.8);border:1px solid var(--sig);color:var(--sig);
+  padding:4px 10px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;z-index:6;
+}
+#stage.drawing #maskhint{display:block}
+#badge{
+  position:absolute;left:10px;top:10px;font-size:10px;color:var(--dimmer);letter-spacing:.1em;
+  background:rgba(0,0,0,.55);padding:3px 6px;pointer-events:none;
+}
+#recdot{
+  position:absolute;right:10px;top:10px;display:none;align-items:center;gap:6px;font-size:10px;
+  letter-spacing:.14em;color:#fff;background:rgba(0,0,0,.6);padding:4px 8px;
+}
+#recdot.on{display:flex}
+#recdot i{width:8px;height:8px;background:var(--sig);border-radius:50%;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.15}}
+
+/* ---------- transport ---------- */
+#transport{border-top:1px solid var(--line);background:var(--panel);padding:7px 10px 9px}
+#scrubwrap{position:relative;height:22px;margin-bottom:6px}
+#trim{position:absolute;left:0;right:0;top:9px;height:4px;background:var(--line);pointer-events:none}
+#trimsel{position:absolute;top:9px;height:4px;background:var(--sig);opacity:.5;pointer-events:none}
+#scrub{position:absolute;inset:0;width:100%;margin:0;background:transparent}
+#tbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tbtn{background:transparent;border:1px solid var(--line2);color:var(--txt);padding:3px 9px;cursor:pointer;font-size:11px}
+.tbtn:hover{border-color:var(--sig);color:var(--sig)}
+#tc{color:var(--dim);font-size:10px;font-variant-numeric:tabular-nums;letter-spacing:.06em}
+#tc b{color:var(--txt);font-weight:400}
+#fpsread{margin-left:auto;color:var(--dimmer);font-size:10px;letter-spacing:.1em}
+
+/* ---------- presets / right col ---------- */
+.plist{display:flex;flex-direction:column;gap:3px;margin-top:4px}
+.pitem{display:flex;align-items:center;gap:4px}
+.pitem button.pload{
+  flex:1;text-align:left;background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+  padding:5px 7px;cursor:pointer;font-size:11px;letter-spacing:.04em;
+}
+.pitem button.pload:hover{border-color:var(--sig);color:var(--sig)}
+.pitem button.pdel{background:none;border:1px solid var(--line);color:var(--dimmer);cursor:pointer;padding:5px 6px}
+.pitem button.pdel:hover{color:var(--sig);border-color:var(--sig)}
+.swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:6px}
+.sw{
+  border:1px solid var(--line);padding:6px 4px 5px;cursor:pointer;text-align:center;
+  font-size:9px;letter-spacing:.06em;text-transform:uppercase;line-height:1.25;border-radius:0;
+}
+.sw b{display:block;font-size:13px;font-weight:400;letter-spacing:.08em;margin-bottom:1px}
+.sw:hover{border-color:var(--sig)}
+.sw.on{border-color:var(--sig);box-shadow:inset 0 0 0 1px var(--sig)}
+kbd{background:var(--panel2);border:1px solid var(--line2);padding:0 4px;font-size:10px;color:var(--dim)}
+@media(max-width:1180px){#app{grid-template-columns:270px 1fr}aside.right{display:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">ASCII<span>VD</span></div>
+    <div class="meta" id="srcinfo">no source</div>
+    <div class="spacer"></div>
+    <button class="hbtn" id="btnOpen">Open video</button>
+    <button class="hbtn" id="btnCam">Webcam</button>
+    <button class="hbtn" id="btnPng">Save frame</button>
+    <button class="hbtn primary rec" id="btnRec">● Record</button>
+    <button class="hbtn" id="btnMp4">Export MP4</button>
+    <button class="hbtn" id="btnSeq">PNG sequence</button>
+  </header>
+
+  <aside class="left" id="panelL"></aside>
+
+  <main>
+    <div id="stage">
+      <canvas id="out"></canvas>
+      <canvas id="maskLayer"></canvas>
+      <div id="maskhint">drag to add · centre handle moves · corners resize · ⌫ or double-click removes · esc to finish</div>
+      <div id="badge">—</div>
+      <div id="recdot"><i></i><span id="rectime">REC 0.0s</span></div>
+      <div id="drop">
+        <h2>Drop a video here</h2>
+        <div>mp4 / mov / webm — or click “Open video”. Nothing is uploaded; all processing is local.</div>
+      </div>
+    </div>
+    <div id="transport">
+      <div id="scrubwrap">
+        <div id="trim"></div><div id="trimsel"></div>
+        <input type="range" id="scrub" min="0" max="1000" value="0" step="1">
+      </div>
+      <div id="tbar">
+        <button class="tbtn" id="btnPlay">▶</button>
+        <button class="tbtn" id="btnBack">◀|</button>
+        <button class="tbtn" id="btnFwd">|▶</button>
+        <button class="tbtn" id="btnIn">[ in</button>
+        <button class="tbtn" id="btnOut">out ]</button>
+        <button class="tbtn" id="btnClr">clear trim</button>
+        <label class="chk" style="margin-left:4px"><input type="checkbox" id="loopChk" checked><span style="color:var(--dim)">loop</span></label>
+        <div id="tc"><b>00:00.00</b> / 00:00.00 &nbsp;·&nbsp; in <span id="tin">—</span> out <span id="tout">—</span></div>
+        <div id="fpsread">— fps</div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="right" id="panelR"></aside>
+</div>
+
+<input type="file" id="fileIn" accept="video/*" hidden>
+<input type="file" id="presetIn" accept="application/json,.json" hidden>
+<!-- kept in the layout rather than display:none: hidden videos are not guaranteed
+     to decode or present frames while paused, which blanks frame grabs -->
+<video id="src" playsinline muted crossorigin="anonymous"
+       style="position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none;z-index:-1"></video>
+
+<script>
+"use strict";
+/* =========================================================================
+   ASCIIVD — monochrome video lab
+   Everything runs locally in the browser. No network, no libraries.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------- schema */
+const CHARSETS = {
+  "shades 10"  : " .:-=+*#%@",
+  "classic 70" : " .'`^\",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$",
+  "marathon"   : " .·:-=≡▒▓█",
+  "blocks"     : " ░▒▓█",
+  "bars"       : " ▏▎▍▌▋▊▉█",
+  "minimal"    : " .:*#@",
+  "dots"       : " ·∙•◦●",
+  "binary"     : " 01",
+  "hatch"      : " ╌─╪╬█",
+  "tech"       : " ·+=*xX#@█",
+  "kana"       : " ｡ｰ=ﾆｷﾒﾊﾎﾑ█",
+  "arrows"     : " ˙˘¯‾↑↟▲█",
+  "custom"     : null
+};
+
+const FONTS = {
+  "system mono" : 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
+  "courier"     : '"Courier New",Courier,monospace',
+  "menlo"       : 'Menlo,monospace',
+  "monaco"      : 'Monaco,monospace',
+  "andale"      : '"Andale Mono",monospace',
+  "pt mono"     : '"PT Mono",monospace',
+  "sans"        : '"Helvetica Neue",Arial,sans-serif'
+};
+
+/* ----------------------------------------------------------------------
+   Hardware palettes. Values are the usual community-accepted RGB renderings
+   of each machine's output — close enough that the footage reads as that era.
+   ---------------------------------------------------------------------- */
+const PALETTES8 = {
+  "game boy": ["#0f380f","#306230","#8bac0f","#9bbc0f"],
+  "game boy pocket": ["#181818","#4a4a4a","#8c8c8c","#c5c5c5"],
+  "virtual boy": ["#000000","#550000","#aa0000","#ff0000"],
+  "cga 1 (cyan/magenta)": ["#000000","#55ffff","#ff55ff","#ffffff"],
+  "cga 2 (green/red)": ["#000000","#55ff55","#ff5555","#ffff55"],
+  "cga 16": ["#000000","#0000aa","#00aa00","#00aaaa","#aa0000","#aa00aa","#aa5500","#aaaaaa",
+             "#555555","#5555ff","#55ff55","#55ffff","#ff5555","#ff55ff","#ffff55","#ffffff"],
+  "ega 16": ["#000000","#0000aa","#00aa00","#00aaaa","#aa0000","#aa00aa","#aa5500","#aaaaaa",
+             "#555555","#5555ff","#55ff55","#55ffff","#ff5555","#ff55ff","#ffff55","#ffffff"],
+  "zx spectrum": ["#000000","#0000d7","#d70000","#d700d7","#00d700","#00d7d7","#d7d700","#d7d7d7",
+                  "#0000ff","#ff0000","#ff00ff","#00ff00","#00ffff","#ffff00","#ffffff"],
+  "c64": ["#000000","#ffffff","#813338","#75cec8","#8e3c97","#56ac4d","#2e2c9b","#edf171",
+          "#8e5029","#553800","#c46c71","#4a4a4a","#7b7b7b","#a9ff9f","#706deb","#b2b2b2"],
+  "nes": ["#000000","#fcfcfc","#f8f8f8","#bcbcbc","#7c7c7c","#a4e4fc","#3cbcfc","#0078f8","#0000fc",
+          "#b8b8f8","#6888fc","#0058f8","#0000bc","#d8b8f8","#9878f8","#6844fc","#4428bc",
+          "#f8b8f8","#f878f8","#d800cc","#940084","#f8a4c0","#f85898","#e40058","#a80020",
+          "#f0d0b0","#f87858","#f83800","#a81000","#fce0a8","#fca044","#e45c10","#881400",
+          "#f8d878","#f8b800","#ac7c00","#503000","#d8f878","#b8f818","#00b800","#007800",
+          "#b8f8b8","#58d854","#00a800","#006800","#b8f8d8","#58f898","#00a844","#005800",
+          "#00fcfc","#00e8d8","#008888","#004058","#f8d8f8","#787878"],
+  "pico-8": ["#000000","#1d2b53","#7e2553","#008751","#ab5236","#5f574f","#c2c3c7","#fff1e8",
+             "#ff004d","#ffa300","#ffec27","#00e436","#29adff","#83769c","#ff77a8","#ffccaa"],
+  "master system": ["#000000","#550000","#aa0000","#ff0000","#005500","#555500","#aa5500","#ff5500",
+                    "#00aa00","#55aa00","#aaaa00","#ffaa00","#00ff00","#55ff00","#aaff00","#ffff00",
+                    "#0000aa","#5500aa","#aa00aa","#ff00aa","#0055ff","#5555ff","#aaaaff","#ffffff"],
+  "apple ii": ["#000000","#6c2940","#404c9c","#d43e9d","#0f7e33","#7c7c7c","#1cc7ef","#bfd3fc",
+               "#3f5a1b","#ef7e1c","#bfbfbf","#fca7c3","#37e12b","#d1e08b","#8ce4c2","#ffffff"],
+  "teletext": ["#000000","#ff0000","#00ff00","#ffff00","#0000ff","#ff00ff","#00ffff","#ffffff"],
+  "1-bit": ["#000000","#ffffff"],
+  "auto (from frame)": null
+};
+
+// panel: L (left) or R (right). show: predicate for conditional visibility.
+const SCHEMA = [
+["OUTPUT","L",[
+  {k:"outW",   t:"range", l:"width",      min:256, max:3840, step:32, d:1280, fmt:v=>v+"px"},
+  {k:"fit",    t:"sel",   l:"fit",        opts:["cover","contain","stretch"], d:"cover"},
+  {k:"arMode", t:"sel",   l:"aspect",     opts:["source","16:9","9:16","4:3","1:1","2.39:1"], d:"source"},
+  {k:"scale",  t:"range", l:"pixel size", min:1, max:24, step:1, d:4, fmt:v=>v+"×"},
+  {k:"fps",    t:"sel",   l:"frame rate", opts:["8","12","15","24","25","30","60"], d:"24"},
+]],
+["IMAGE","L",[
+  {k:"bright", t:"range", l:"brightness", min:-1, max:1,  step:.01, d:0},
+  {k:"contr",  t:"range", l:"contrast",   min:-1, max:1,  step:.01, d:.15},
+  {k:"gamma",  t:"range", l:"gamma",      min:.2, max:3,  step:.01, d:1},
+  {k:"black",  t:"range", l:"black pt",   min:0,  max:1,  step:.01, d:0},
+  {k:"white",  t:"range", l:"white pt",   min:0,  max:1,  step:.01, d:1},
+  {k:"blur",   t:"range", l:"blur",       min:0,  max:6,  step:.1,  d:0},
+  {k:"sharp",  t:"range", l:"sharpen",    min:0,  max:2,  step:.05, d:0},
+  {k:"edge",   t:"range", l:"edges",      min:0,  max:1,  step:.01, d:0},
+  {k:"edgeOnly",t:"bool", l:"edges only", d:false},
+  {k:"sat",    t:"range", l:"saturation", min:0,  max:2,  step:.01, d:1},
+  {k:"poster", t:"range", l:"posterize",  min:0,  max:16, step:1,   d:0, fmt:v=>v==0?"off":v},
+  {k:"invert", t:"bool",  l:"invert",     d:false},
+]],
+["RENDER","L",[
+  {k:"mode",   t:"sel",   l:"mode", opts:["dither","8-bit","lcd","riso","ascii","halftone","stipple","contour","threshold","grayscale"], d:"dither"},
+
+  {k:"algo",   t:"sel",   l:"algorithm", d:"floyd-steinberg", show:p=>p.mode==="dither"||p.mode==="riso",
+    opts:["floyd-steinberg","atkinson","jarvis","stucki","burkes","sierra","sierra-2","sierra-lite",
+          "bayer 2×2","bayer 4×4","bayer 8×8","clustered 4×4","clustered 8×8","blue noise","white noise","halftone dot"]},
+  {k:"dLevels",t:"range", l:"tones",     min:2, max:8, step:1, d:2, show:p=>p.mode==="dither"},
+  {k:"dThresh",t:"range", l:"threshold", min:0, max:1, step:.01, d:.5, show:p=>p.mode==="dither"||p.mode==="threshold"||p.mode==="riso"},
+  {k:"dAmt",   t:"range", l:"diffusion", min:0, max:1, step:.01, d:1, show:p=>p.mode==="dither"||p.mode==="riso"},
+  {k:"serp",   t:"bool",  l:"serpentine",d:true, show:p=>p.mode==="dither"||p.mode==="riso"},
+
+  {k:"charset",t:"sel",   l:"charset", opts:Object.keys(CHARSETS), d:"shades 10", show:p=>p.mode==="ascii"},
+  {k:"custom", t:"text",  l:"chars",   d:" .:-=+*#%@", show:p=>p.mode==="ascii"&&p.charset==="custom"},
+  {k:"cols",   t:"range", l:"columns", min:16, max:400, step:1, d:120, show:p=>p.mode==="ascii"},
+  {k:"cellAR", t:"range", l:"cell ratio", min:1, max:3, step:.05, d:1.9, show:p=>p.mode==="ascii"},
+  {k:"fScale", t:"range", l:"glyph size", min:.5, max:1.6, step:.01, d:1.05, show:p=>p.mode==="ascii"},
+  {k:"font",   t:"sel",   l:"font", opts:Object.keys(FONTS), d:"system mono", show:p=>p.mode==="ascii"},
+  {k:"bold",   t:"bool",  l:"bold", d:false, show:p=>p.mode==="ascii"},
+  {k:"rampInv",t:"bool",  l:"flip ramp", d:false, show:p=>p.mode==="ascii"},
+  {k:"aDither",t:"sel",   l:"glyph dither", opts:["none","bayer 4×4","bayer 8×8","blue noise","noise"], d:"none", show:p=>p.mode==="ascii"},
+  {k:"aMatch", t:"bool",  l:"shape match", d:false, show:p=>p.mode==="ascii"},
+  {k:"aMatchW",t:"range", l:"match weight", min:0, max:1, step:.05, d:.75, show:p=>p.mode==="ascii"&&p.aMatch},
+  {k:"aEdge",  t:"bool",  l:"edge glyphs", d:false, show:p=>p.mode==="ascii"},
+  {k:"aEdgeT", t:"range", l:"edge amount", min:0, max:1, step:.01, d:.35, show:p=>p.mode==="ascii"&&p.aEdge},
+  {k:"aColor", t:"sel",   l:"glyph color", opts:["ink","sample source","duotone"], d:"ink", show:p=>p.mode==="ascii"},
+
+  {k:"htShape",t:"sel",   l:"shape", opts:["dot","square","diamond","line","cross","ring","triangle"], d:"dot", show:p=>p.mode==="halftone"},
+  {k:"htCell", t:"range", l:"cell",  min:2, max:60, step:1, d:9,  show:p=>p.mode==="halftone"},
+  {k:"htAngle",t:"range", l:"angle", min:0, max:90, step:1, d:45, show:p=>p.mode==="halftone"},
+  {k:"htGain", t:"range", l:"dot gain", min:.3, max:2, step:.01, d:1.05, show:p=>p.mode==="halftone"},
+  {k:"htSoft", t:"bool",  l:"smooth", d:true, show:p=>p.mode==="halftone"},
+
+  {k:"stipDens",t:"range", l:"dot density", min:.2, max:3, step:.05, d:1, show:p=>p.mode==="stipple"},
+  {k:"stipSize",t:"range", l:"dot size", min:.3, max:3, step:.05, d:1, show:p=>p.mode==="stipple"},
+  {k:"stipJit", t:"range", l:"scatter", min:0, max:1.5, step:.05, d:.65, show:p=>p.mode==="stipple"},
+  {k:"stipVary",t:"range", l:"size variation", min:0, max:1, step:.05, d:.45, show:p=>p.mode==="stipple"},
+  {k:"stipGrid",t:"range", l:"grain", min:1, max:12, step:1, d:3, show:p=>p.mode==="stipple"},
+
+  {k:"ctLevels",t:"range",l:"levels", min:2, max:32, step:1, d:9, show:p=>p.mode==="contour"},
+  {k:"ctWidth", t:"range",l:"line width", min:1, max:5, step:1, d:1, show:p=>p.mode==="contour"},
+  {k:"ctFill",  t:"range",l:"fill tint", min:0, max:1, step:.01, d:0, show:p=>p.mode==="contour"},
+]],
+["8-BIT","L",[
+  {k:"pxPal",   t:"sel",   l:"palette", opts:Object.keys(PALETTES8), d:"nes", show:p=>p.mode==="8-bit"},
+  {k:"pxAuto",  t:"range", l:"auto colours", min:2, max:32, step:1, d:12, show:p=>p.mode==="8-bit"&&p.pxPal==="auto (from frame)"},
+  {k:"pxDither",t:"sel",   l:"dither", opts:["none","bayer 2×2","bayer 4×4","bayer 8×8","blue noise","noise",
+        "floyd-steinberg","atkinson"], d:"bayer 4×4", show:p=>p.mode==="8-bit"},
+  {k:"pxAmt",   t:"range", l:"dither amount", min:0, max:1.5, step:.01, d:.7, show:p=>p.mode==="8-bit"},
+  {k:"pxClash", t:"bool",  l:"attribute clash", d:false, show:p=>p.mode==="8-bit"},
+  {k:"pxCell",  t:"range", l:"attribute cell", min:2, max:32, step:1, d:8, show:p=>p.mode==="8-bit"&&p.pxClash},
+  {k:"pxOutline",t:"range",l:"outline", min:0, max:1, step:.01, d:0, show:p=>p.mode==="8-bit"},
+  {k:"pxOutCol",t:"color", l:"outline ink", d:"#000000", show:p=>p.mode==="8-bit"&&p.pxOutline>0},
+]],
+["LCD","L",[
+  {k:"lcdSet",   t:"sel",   l:"screen", opts:["3310 green","5110 lime","grey","blue backlight","amber","custom"], d:"3310 green", show:p=>p.mode==="lcd"},
+  {k:"lcdScreen",t:"color", l:"glass", d:"#7ba84d", show:p=>p.mode==="lcd"},
+  {k:"lcdInk",   t:"color", l:"pixels", d:"#141a0e", show:p=>p.mode==="lcd"},
+  {k:"lcdGlowCol",t:"color",l:"backlight", d:"#cfdc6e", show:p=>p.mode==="lcd"},
+  {k:"lcdCell",  t:"range", l:"pixel pitch", min:4, max:48, step:1, d:12, show:p=>p.mode==="lcd", fmt:v=>v+"px"},
+  {k:"lcdGap",   t:"range", l:"pixel gap", min:0, max:.45, step:.01, d:.18, show:p=>p.mode==="lcd"},
+  {k:"lcdDither",t:"sel",   l:"dither", opts:["threshold","atkinson","floyd-steinberg","bayer 4×4","bayer 8×8","blue noise"], d:"atkinson", show:p=>p.mode==="lcd"},
+  {k:"lcdThresh",t:"range", l:"threshold", min:0, max:1, step:.01, d:.5, show:p=>p.mode==="lcd"},
+  {k:"lcdShadow",t:"range", l:"drop shadow", min:0, max:1, step:.01, d:.55, show:p=>p.mode==="lcd"},
+  {k:"lcdShX",   t:"range", l:"shadow x", min:-.6, max:.6, step:.01, d:.16, show:p=>p.mode==="lcd"&&p.lcdShadow>0},
+  {k:"lcdShY",   t:"range", l:"shadow y", min:-.6, max:.6, step:.01, d:.26, show:p=>p.mode==="lcd"&&p.lcdShadow>0},
+  {k:"lcdShBlur",t:"range", l:"shadow blur", min:0, max:1, step:.01, d:.22, show:p=>p.mode==="lcd"&&p.lcdShadow>0},
+  {k:"lcdGlow",  t:"range", l:"backlight glow", min:0, max:1, step:.01, d:.45, show:p=>p.mode==="lcd"},
+  {k:"lcdTexture",t:"range",l:"glass texture", min:0, max:1, step:.01, d:.35, show:p=>p.mode==="lcd"},
+  {k:"lcdGhost", t:"range", l:"unlit pixels", min:0, max:.4, step:.01, d:.03, show:p=>p.mode==="lcd"},
+]],
+["RISO","L",[
+  {k:"rzSet",   t:"sel",   l:"ink set", opts:["pink · blue · yellow","red · blue · yellow","pink · teal · yellow",
+        "orange · purple · teal","green · pink · black","blue · fluoro pink","cmy","custom"], d:"pink · blue · yellow"},
+  {k:"rzInks",  t:"range", l:"inks", min:2, max:4, step:1, d:3, show:p=>p.mode==="riso"},
+  {k:"rzInk1",  t:"color", l:"ink 1", d:"#ff48b0", show:p=>p.mode==="riso"},
+  {k:"rzInk2",  t:"color", l:"ink 2", d:"#0078bf", show:p=>p.mode==="riso"},
+  {k:"rzInk3",  t:"color", l:"ink 3", d:"#ffe800", show:p=>p.mode==="riso"},
+  {k:"rzInk4",  t:"color", l:"ink 4", d:"#00a95c", show:p=>p.mode==="riso"&&p.rzInks>=4},
+  {k:"rzSep",   t:"sel",   l:"separation", opts:["colour","tonal build","mono offset"], d:"colour", show:p=>p.mode==="riso"},
+  {k:"rzOffset",t:"range", l:"misregister", min:0, max:40, step:.5, d:5, show:p=>p.mode==="riso"},
+  {k:"rzAngle", t:"range", l:"offset angle", min:0, max:360, step:1, d:30, show:p=>p.mode==="riso"},
+  {k:"rzAlpha", t:"range", l:"ink opacity", min:.2, max:1, step:.01, d:.88, show:p=>p.mode==="riso"},
+  {k:"rzDensity",t:"range",l:"ink density", min:.2, max:2, step:.01, d:1, show:p=>p.mode==="riso"},
+  {k:"rzBlend", t:"sel",   l:"blend", opts:["multiply","screen","normal"], d:"multiply", show:p=>p.mode==="riso"},
+  {k:"rzScreens",t:"bool", l:"rotate screens", d:true, show:p=>p.mode==="riso"},
+  {k:"rzWobble",t:"range", l:"plate wobble", min:0, max:12, step:.1, d:0, show:p=>p.mode==="riso"},
+  {k:"rzWobRate",t:"range",l:"wobble rate", min:.1, max:8, step:.1, d:1.4, show:p=>p.mode==="riso"&&p.rzWobble>0},
+]],
+["TIME","L",[
+  {k:"tdMode",  t:"sel",   l:"time displace", opts:["off","rows","columns","radial","luma"], d:"off"},
+  {k:"tdDepth", t:"range", l:"depth", min:2, max:60, step:1, d:20, show:p=>p.tdMode!=="off", fmt:v=>v+"f"},
+  {k:"tdDir",   t:"sel",   l:"direction", opts:["forward","reverse"], d:"forward", show:p=>p.tdMode!=="off"},
+  {k:"tdMix",   t:"range", l:"amount", min:0, max:1, step:.01, d:1, show:p=>p.tdMode!=="off"},
+  {k:"persist", t:"range", l:"persistence", min:0, max:.97, step:.01, d:0},
+  {k:"persistMode",t:"sel",l:"trail", opts:["auto","glow","ink"], d:"auto", show:p=>p.persist>0},
+]],
+["SMEAR","L",[
+  {k:"smOn",    t:"bool",  l:"use lines", d:false},
+  {k:"smStage", t:"sel",   l:"stage", opts:["after effect","before effect"], d:"after effect", show:p=>p.smOn},
+  {k:"smDir",   t:"sel",   l:"bleed toward", opts:["right / down","left / up","both ways"], d:"right / down", show:p=>p.smOn},
+  {k:"smLen",   t:"range", l:"length", min:0, max:1, step:.01, d:1, show:p=>p.smOn},
+  {k:"smJitter",t:"range", l:"ragged ends", min:0, max:1, step:.01, d:.4, show:p=>p.smOn},
+  {k:"smBand",  t:"range", l:"row band", min:1, max:32, step:1, d:2, show:p=>p.smOn, fmt:v=>v+"px"},
+  {k:"smWobble",t:"range", l:"sample wobble", min:0, max:40, step:1, d:0, show:p=>p.smOn, fmt:v=>v+"px"},
+  {k:"smGate",  t:"range", l:"brightness gate", min:0, max:1, step:.01, d:0, show:p=>p.smOn},
+  {k:"smDecay", t:"range", l:"fade out", min:0, max:1, step:.01, d:.3, show:p=>p.smOn},
+  {k:"smAmt",   t:"range", l:"opacity", min:0, max:1, step:.01, d:1, show:p=>p.smOn},
+  {k:"smRate",  t:"range", l:"flicker rate", min:0, max:30, step:.5, d:6, show:p=>p.smOn},
+  {k:"smBlend", t:"sel",   l:"blend", opts:["cover","screen","add"], d:"cover", show:p=>p.smOn&&p.smStage==="after effect"},
+]],
+["BLEED","L",[
+  {k:"hbAmt",   t:"range", l:"highlight bleed", min:0, max:1.5, step:.01, d:0},
+  {k:"hbThresh",t:"range", l:"highlight level", min:0, max:1, step:.01, d:.78, show:p=>p.hbAmt>0},
+  {k:"hbSoft",  t:"range", l:"knee", min:0, max:.5, step:.01, d:.12, show:p=>p.hbAmt>0},
+  {k:"hbLen",   t:"range", l:"streak length", min:.01, max:1, step:.01, d:.35, show:p=>p.hbAmt>0},
+  {k:"hbDir",   t:"sel",   l:"push toward", opts:["right","left","down","up"], d:"right", show:p=>p.hbAmt>0},
+  {k:"hbColor", t:"sel",   l:"colour", opts:["source colour","tint"], d:"source colour", show:p=>p.hbAmt>0},
+  {k:"hbTint",  t:"color", l:"tint", d:"#ffb238", show:p=>p.hbAmt>0&&p.hbColor==="tint"},
+  {k:"hbFrom",  t:"sel",   l:"read from", opts:["source","output"], d:"source", show:p=>p.hbAmt>0},
+  {k:"hbFlicker",t:"range",l:"row flicker", min:0, max:1, step:.01, d:.3, show:p=>p.hbAmt>0},
+  {k:"hbRate",  t:"range", l:"flicker rate", min:0, max:30, step:.5, d:8, show:p=>p.hbAmt>0},
+  {k:"hbRes",   t:"range", l:"softness", min:1, max:8, step:1, d:3, show:p=>p.hbAmt>0},
+  {k:"hbBlend", t:"sel",   l:"blend", opts:["screen","add"], d:"screen", show:p=>p.hbAmt>0},
+]],
+["A / B","L",[
+  {k:"xfMode",  t:"sel",   l:"transition", opts:["off","dissolve","wipe","bars","iris"], d:"off"},
+  {k:"xfDir",   t:"sel",   l:"direction", opts:["L→R","R→L","T→B","B→T"], d:"L→R", show:p=>p.xfMode==="wipe"||p.xfMode==="bars"},
+  {k:"xfIris",  t:"sel",   l:"iris", opts:["open","close"], d:"open", show:p=>p.xfMode==="iris"},
+  {k:"xfTo",    t:"sel",   l:"ends on", opts:["clean footage","effect"], d:"clean footage", show:p=>p.xfMode!=="off"},
+  {k:"xfStart", t:"range", l:"start", min:0, max:1, step:.005, d:.5, show:p=>p.xfMode!=="off", fmt:v=>Math.round(v*100)+"%"},
+  {k:"xfLen",   t:"range", l:"length", min:.005, max:1, step:.005, d:.2, show:p=>p.xfMode!=="off", fmt:v=>Math.round(v*100)+"%"},
+  {k:"xfSoft",  t:"range", l:"edge softness", min:0, max:.5, step:.005, d:.08, show:p=>p.xfMode==="wipe"||p.xfMode==="bars"||p.xfMode==="iris"},
+  {k:"xfBars",  t:"range", l:"bars", min:2, max:40, step:1, d:8, show:p=>p.xfMode==="bars"},
+  {k:"xfStagger",t:"range",l:"bar stagger", min:0, max:1, step:.01, d:.6, show:p=>p.xfMode==="bars"},
+  {k:"dryLook", t:"sel",   l:"clean side", opts:["original","mono"], d:"original"},
+]],
+["MASK","L",[
+  {k:"maskOn",  t:"bool",  l:"use blocks", d:false},
+  {k:"maskInv", t:"bool",  l:"invert", d:false},
+  {k:"maskFeather",t:"range",l:"feather", min:0, max:120, step:1, d:0},
+  {k:"maskRound",t:"range", l:"corner", min:0, max:120, step:1, d:0},
+]],
+["WARP","L",[
+  {k:"wAmp",   t:"range", l:"wave amp",   min:0, max:80, step:.5, d:0},
+  {k:"wLen",   t:"range", l:"wave length",min:4, max:400, step:1, d:60},
+  {k:"wSpd",   t:"range", l:"wave speed", min:-8, max:8, step:.1, d:1},
+  {k:"wAxis",  t:"sel",   l:"wave axis",  opts:["horizontal","vertical","both","radial"], d:"horizontal"},
+  {k:"rAmp",   t:"range", l:"ripple",     min:0, max:60, step:.5, d:0},
+  {k:"rLen",   t:"range", l:"ripple len", min:4, max:300, step:1, d:40},
+  {k:"rSpd",   t:"range", l:"ripple spd", min:-8, max:8, step:.1, d:1.5},
+  {k:"jAmp",   t:"range", l:"glitch",     min:0, max:80, step:1, d:0},
+  {k:"jSize",  t:"range", l:"glitch band",min:1, max:80, step:1, d:14},
+  {k:"jRate",  t:"range", l:"glitch rate",min:0, max:30, step:.5, d:8},
+]],
+["OVERLAY","L",[
+  {k:"scan",   t:"range", l:"scanlines",  min:0, max:1, step:.01, d:0},
+  {k:"scanGap",t:"range", l:"scan pitch", min:2, max:40, step:1, d:4},
+  {k:"scanW",  t:"range", l:"scan width", min:1, max:20, step:1, d:2},
+  {k:"bleed",  t:"range", l:"ink bleed",  min:0, max:1, step:.01, d:0},
+  {k:"fibre",  t:"range", l:"paper fibre",min:0, max:1, step:.01, d:0},
+  {k:"fibreSc",t:"range", l:"fibre scale",min:1, max:8, step:1, d:2, show:p=>p.fibre>0},
+  {k:"grain",  t:"range", l:"grain",      min:0, max:1, step:.01, d:0},
+  {k:"grainSz",t:"range", l:"grain size", min:1, max:8, step:1, d:2},
+  {k:"vig",    t:"range", l:"vignette",   min:0, max:1, step:.01, d:0},
+  {k:"glow",   t:"range", l:"bloom",      min:0, max:1, step:.01, d:0},
+  {k:"pulse",  t:"range", l:"pulse",      min:0, max:1, step:.01, d:0},
+  {k:"pulseHz",t:"range", l:"pulse rate", min:.1, max:12, step:.1, d:2},
+  {k:"border", t:"range", l:"frame",      min:0, max:120, step:1, d:0},
+  {k:"borderI",t:"range", l:"frame inset",min:0, max:80, step:1, d:0},
+]],
+["COLOR","L",[
+  {k:"ink",    t:"color", l:"ink",   d:"#ffffff"},
+  {k:"paper",  t:"color", l:"paper", d:"#000000"},
+  {k:"tint",   t:"color", l:"duotone", d:"#ff5b1f", show:p=>p.aColor==="duotone"&&p.mode==="ascii"},
+  {k:"mix",    t:"range", l:"dry / wet", min:0, max:1, step:.01, d:1},
+  {k:"srcMix", t:"range", l:"source ghost", min:0, max:1, step:.01, d:0},
+]],
+["EXPORT","R",[
+  {k:"xFormat",t:"sel",   l:"record as",  opts:["mp4 (h.264)","webm (vp9)"], d:"mp4 (h.264)"},
+  {k:"xFps",   t:"sel",   l:"export fps", opts:["12","15","24","25","30","60"], d:"30"},
+  {k:"xMbps",  t:"range", l:"bitrate",    min:2, max:80, step:1, d:20, fmt:v=>v+"M"},
+  {k:"xAudio", t:"bool",  l:"keep audio", d:true},
+  {k:"xTrim",  t:"bool",  l:"use in/out", d:true},
+  {k:"seqStep",t:"range", l:"seq step",   min:1, max:10, step:1, d:1, fmt:v=>"1/"+v},
+  {k:"xProfile",t:"sel",  l:"mp4 profile",opts:["high","main","baseline"], d:"high"},
+]]
+];
+
+/* ------------------------------------------------------------ parameters */
+const P = {};
+const META = {};
+SCHEMA.forEach(([g,panel,items])=>items.forEach(it=>{ P[it.k]=it.d; META[it.k]=it; }));
+P.maskRects = [];                 // [{x,y,w,h}] in 0..1 of the output frame
+P.pxLock = null;                  // frozen auto palette, as hex strings
+P.smearLines = [];                // [{o:"v",x,y0,y1} | {o:"h",y,x0,x1}] in 0..1 of the frame
+const DEFAULTS = JSON.parse(JSON.stringify(P));
+
+/* ------------------------------------------------------------- UI build */
+const $ = s=>document.querySelector(s);
+const ctrls = {};      // key -> {row, input, valEl, meta}
+const groupEls = [];
+
+function buildUI(){
+  SCHEMA.forEach(([name,panel,items])=>{
+    const host = panel==="R" ? $("#panelR") : $("#panelL");
+    const g = document.createElement("div"); g.className="group"; g.dataset.name=name;
+    const h = document.createElement("h3"); h.textContent=name;
+    const body = document.createElement("div"); body.className="gbody";
+    h.onclick = ()=>g.classList.toggle("collapsed");
+    g.append(h,body); host.append(g); groupEls.push(g);
+    items.forEach(it=>body.append(makeRow(it)));
+  });
+  buildPalettes();
+  buildPixelTools();
+  buildMaskTools();
+  buildSmearTools();
+  buildPresetPanel();
+  buildHelpPanel();
+  syncVisibility();
+}
+
+function makeRow(it){
+  const row = document.createElement("div");
+  row.className = "row" + (it.t==="sel"||it.t==="text"||it.t==="color"||it.t==="bool" ? " wide":"");
+  const lab = document.createElement("label"); lab.textContent = it.l; lab.title = it.k;
+  row.append(lab);
+  let input, valEl=null;
+
+  if(it.t==="range"){
+    input = document.createElement("input"); input.type="range";
+    input.min=it.min; input.max=it.max; input.step=it.step; input.value=it.d;
+    valEl = document.createElement("span"); valEl.className="val";
+    input.addEventListener("input",()=>setParam(it.k, parseFloat(input.value)));
+    // double-click a label resets that control
+    lab.ondblclick = ()=>{ input.value = it.d; setParam(it.k, it.d); };
+  } else if(it.t==="sel"){
+    input = document.createElement("select");
+    it.opts.forEach(o=>{ const op=document.createElement("option"); op.value=o; op.textContent=o; input.append(op); });
+    input.value = it.d;
+    input.addEventListener("change",()=>setParam(it.k, input.value));
+  } else if(it.t==="bool"){
+    const w=document.createElement("label"); w.className="chk";
+    input=document.createElement("input"); input.type="checkbox"; input.checked=!!it.d;
+    const t=document.createElement("span"); t.style.color="var(--dimmer)"; t.textContent="on";
+    w.append(input,t);
+    input.addEventListener("change",()=>setParam(it.k, input.checked));
+    row.append(w); ctrls[it.k]={row,input,valEl,meta:it}; return row;
+  } else if(it.t==="color"){
+    input=document.createElement("input"); input.type="color"; input.value=it.d;
+    input.addEventListener("input",()=>setParam(it.k, input.value));
+  } else { // text
+    input=document.createElement("input"); input.type="text"; input.value=it.d;
+    input.addEventListener("input",()=>setParam(it.k, input.value));
+  }
+  row.append(input); if(valEl) row.append(valEl);
+  ctrls[it.k]={row,input,valEl,meta:it};
+  return row;
+}
+
+function setParam(k,v){
+  P[k]=v;
+  if(k==="rzSet" && RISO_SETS[v]){
+    const set=RISO_SETS[v];
+    P.rzInk1=set[0]; P.rzInk2=set[1]; P.rzInk3=set[2];
+    ["rzInk1","rzInk2","rzInk3"].forEach(refreshControl);
+  }
+  if(/^rzInk[1-4]$/.test(k)) P.rzSet="custom", refreshControl("rzSet");
+  if(k==="lcdSet" && LCD_SETS[v]){
+    [P.lcdScreen,P.lcdInk,P.lcdGlowCol]=LCD_SETS[v];
+    ["lcdScreen","lcdInk","lcdGlowCol"].forEach(refreshControl);
+  }
+  if(k==="lcdScreen"||k==="lcdInk"||k==="lcdGlowCol"){ P.lcdSet="custom"; refreshControl("lcdSet"); }
+  // riso prints ink on paper: a black sheet under a multiply blend is just black
+  if(k==="mode" && v==="riso" && isDark(P.paper) && P.rzBlend==="multiply"){
+    P.paper="#f4f1e8"; refreshControl("paper"); markDirty("paper"); markPalette();
+  }
+  refreshControl(k); syncVisibility(); markDirty(k);
+  if(k==="ink"||k==="paper") markPalette();
+  requestRender();
+}
+const isDark = hex=>{ const [r,g,b]=hex2rgb(hex); return (0.2126*r+0.7152*g+0.0722*b)<40; };
+function refreshControl(k){
+  const c=ctrls[k]; if(!c) return;
+  const it=c.meta;
+  if(it.t==="range"){ c.input.value=P[k]; c.valEl.textContent = it.fmt?it.fmt(P[k]):fmtNum(P[k]); }
+  else if(it.t==="bool") c.input.checked=!!P[k];
+  else c.input.value=P[k];
+}
+function fmtNum(v){ return Math.abs(v)>=100?String(Math.round(v)) : (Math.round(v*100)/100).toString(); }
+function markDirty(k){
+  const c=ctrls[k]; if(!c) return;
+  c.row.classList.toggle("dirty", JSON.stringify(P[k])!==JSON.stringify(DEFAULTS[k]));
+}
+function syncVisibility(){
+  if(typeof updatePxLock==="function") updatePxLock();
+  Object.keys(ctrls).forEach(k=>{
+    const it=ctrls[k].meta;
+    ctrls[k].row.style.display = (it.show && !it.show(P)) ? "none" : "";
+  });
+  groupEls.forEach(g=>{
+    const rows=[...g.querySelectorAll(".row")];
+    if(rows.length) g.style.display = rows.every(r=>r.style.display==="none") ? "none" : "";
+  });
+}
+function refreshAll(){ Object.keys(ctrls).forEach(k=>{refreshControl(k);markDirty(k);}); syncVisibility(); markPalette(); }
+
+/* Monochrome phone LCDs: glass, pixel, backlight. */
+const LCD_SETS = {
+  "3310 green"     : ["#7ba84d","#141a0e","#cfdc6e"],
+  "5110 lime"      : ["#9ec35a","#1b2412","#e2ec8c"],
+  "grey"           : ["#a9b0a1","#1d201b","#d6dccd"],
+  "blue backlight" : ["#5f9fd6","#0c1a2a","#a9d6ff"],
+  "amber"          : ["#d99a2b","#2a1604","#ffd27a"]
+};
+
+/* Classic Risograph spot inks (Riso's own drum colours). */
+const RISO_SETS = {
+  "pink · blue · yellow"   : ["#ff48b0","#0078bf","#ffe800"],
+  "red · blue · yellow"    : ["#ff665e","#0078bf","#ffe800"],
+  "pink · teal · yellow"   : ["#ff48b0","#00838a","#ffe800"],
+  "orange · purple · teal" : ["#ff6c2f","#765ba7","#00838a"],
+  "green · pink · black"   : ["#00a95c","#ff48b0","#000000"],
+  "blue · fluoro pink"     : ["#0078bf","#ff48b0","#ffe800"],
+  "cmy"                    : ["#00aeef","#ec008c","#fff200"]
+};
+
+/* --------------------------------------------------------- source state */
+const video = $("#src");
+const out = $("#out"), octx = out.getContext("2d",{willReadFrequently:false});
+let srcReady=false, isCam=false, camStream=null;
+let inPoint=0, outPoint=0;
+
+function fmtTC(s){
+  if(!isFinite(s)) s=0;
+  const m=Math.floor(s/60), sec=Math.floor(s%60), cs=Math.floor((s%1)*100);
+  return String(m).padStart(2,"0")+":"+String(sec).padStart(2,"0")+"."+String(cs).padStart(2,"0");
+}
+
+let currentFile=null;
+async function loadFile(file){
+  stopCam();
+  currentFile=file;
+  const url = URL.createObjectURL(file);
+  video.srcObject=null; video.src=url; video.muted=true; video.loop=false;
+  isCam=false;
+  await new Promise(res=>{ video.onloadedmetadata=res; });
+  srcReady=true; inPoint=0; outPoint=video.duration||0;
+  $("#drop").classList.add("hide");
+  $("#srcinfo").textContent = `${file.name} · ${video.videoWidth}×${video.videoHeight} · ${fmtTC(video.duration)}`;
+  updateTrimUI(); resizeOutput(); video.currentTime=0;
+  requestRender();
+}
+async function startCam(){
+  try{
+    camStream = await navigator.mediaDevices.getUserMedia({video:{width:1920,height:1080},audio:false});
+  }catch(e){ alert("Camera unavailable: "+e.message); return; }
+  video.src=""; video.srcObject=camStream; isCam=true; srcReady=true;
+  await video.play();
+  $("#drop").classList.add("hide");
+  $("#srcinfo").textContent = `webcam · ${video.videoWidth}×${video.videoHeight}`;
+  resizeOutput(); requestRender();
+}
+function stopCam(){ if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; } isCam=false; }
+
+/* --------------------------------------------------------- output sizing */
+let outW=1280, outH=720;
+function targetAspect(){
+  switch(P.arMode){
+    case "16:9": return 16/9; case "9:16": return 9/16; case "4:3": return 4/3;
+    case "1:1": return 1; case "2.39:1": return 2.39;
+    default: return (video.videoWidth&&video.videoHeight) ? video.videoWidth/video.videoHeight : 16/9;
+  }
+}
+function resizeOutput(){
+  outW = Math.max(16, Math.round(P.outW/2)*2);
+  outH = Math.max(16, Math.round(outW/targetAspect()/2)*2);
+  if(out.width!==outW||out.height!==outH){ out.width=outW; out.height=outH; }
+}
+
+/* ------------------------------------------------------------- transport */
+const scrub=$("#scrub");
+let playing=false;
+function play(){ if(!srcReady||isCam) return; video.play(); playing=true; $("#btnPlay").textContent="⏸"; }
+function pause(){ video.pause(); playing=false; $("#btnPlay").textContent="▶"; }
+function togglePlay(){ playing?pause():play(); }
+$("#btnPlay").onclick=togglePlay;
+$("#btnFwd").onclick=()=>step(+1);
+$("#btnBack").onclick=()=>step(-1);
+function step(dir){ if(!srcReady||isCam) return; pause(); video.currentTime = clamp(video.currentTime + dir/parseFloat(P.fps),0,video.duration); }
+$("#btnIn").onclick=()=>{ inPoint=video.currentTime; if(outPoint<=inPoint) outPoint=video.duration; updateTrimUI(); };
+$("#btnOut").onclick=()=>{ outPoint=video.currentTime; if(outPoint<=inPoint) inPoint=0; updateTrimUI(); };
+$("#btnClr").onclick=()=>{ inPoint=0; outPoint=video.duration||0; updateTrimUI(); };
+scrub.addEventListener("input",()=>{ if(!srcReady||isCam) return; pause(); video.currentTime=(scrub.value/1000)*(video.duration||0); });
+
+function updateTrimUI(){
+  const d=video.duration||1;
+  const sel=$("#trimsel"), w=$("#scrubwrap").clientWidth;
+  sel.style.left=(inPoint/d*w)+"px"; sel.style.width=((outPoint-inPoint)/d*w)+"px";
+  $("#tin").textContent=fmtTC(inPoint); $("#tout").textContent=fmtTC(outPoint);
+}
+function updateTimeUI(){
+  const d=video.duration||0;
+  $("#tc").innerHTML = `<b>${fmtTC(video.currentTime)}</b> / ${fmtTC(d)} &nbsp;·&nbsp; in <span id="tin">${fmtTC(inPoint)}</span> out <span id="tout">${fmtTC(outPoint)}</span>`;
+  if(!scrubbing) scrub.value = d?Math.round(video.currentTime/d*1000):0;
+}
+let scrubbing=false;
+scrub.addEventListener("pointerdown",()=>scrubbing=true);
+addEventListener("pointerup",()=>scrubbing=false);
+addEventListener("resize",()=>{ updateTrimUI(); drawMaskOverlay(); });
+
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+
+/* ====================================================================== */
+/*  PROCESSING                                                            */
+/* ====================================================================== */
+const work = document.createElement("canvas");
+const wctx = work.getContext("2d",{willReadFrequently:true});
+const small = document.createElement("canvas");          // grid-resolution paint target
+const sctx = small.getContext("2d",{willReadFrequently:false});
+const tmp = document.createElement("canvas");
+const tctx = tmp.getContext("2d");
+
+let L=null, E=null, EA=null, gw=0, gh=0;                 // luma, edge magnitude, edge angle
+let RGB=null;                                            // grid rgb (for "sample source")
+
+/* ---- ordered matrices -------------------------------------------------- */
+function bayer(n){
+  if(n===1) return [[0]];
+  const p = bayer(n/2), m=[];
+  for(let y=0;y<n;y++){ m[y]=[]; for(let x=0;x<n;x++){
+    const q=p[y%(n/2)][x%(n/2)]*4;
+    m[y][x]= q + (y<n/2 ? (x<n/2?0:2) : (x<n/2?3:1));
+  }}
+  return m;
+}
+function normMat(m){
+  const n=m.length, o=new Float32Array(n*n);
+  let mx=0; for(let y=0;y<n;y++)for(let x=0;x<n;x++) mx=Math.max(mx,m[y][x]);
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++) o[y*n+x]=(m[y][x]+.5)/(mx+1);
+  return {n,d:o};
+}
+const MAT = {
+  "bayer 2×2": normMat(bayer(2)),
+  "bayer 4×4": normMat(bayer(4)),
+  "bayer 8×8": normMat(bayer(8)),
+  "clustered 4×4": normMat([[12,5,6,13],[4,0,1,7],[11,3,2,8],[15,10,9,14]]),
+  "clustered 8×8": normMat([
+    [24,10,12,26,35,47,49,37],[8,0,2,14,45,59,61,51],[22,6,4,16,43,57,63,53],[30,20,18,28,33,41,55,39],
+    [34,46,48,36,25,11,13,27],[44,58,60,50,9,1,3,15],[42,56,62,52,23,7,5,17],[32,40,54,38,31,21,19,29]]),
+  "halftone dot": normMat([
+    [13,5,12,16,21,29,22,18],[6,0,4,20,28,36,30,24],[14,1,3,25,35,39,34,27],[17,9,10,31,38,37,33,23],
+    [21,29,22,18,13,5,12,16],[28,36,30,24,6,0,4,20],[35,39,34,27,14,1,3,25],[38,37,33,23,17,9,10,31]])
+};
+/* blue noise: white noise, high-passed, then rank-ordered (fast approximation) */
+const BLUE = (()=>{
+  const n=64, N=n*n, a=new Float32Array(N);
+  for(let i=0;i<N;i++) a[i]=Math.random();
+  const b=new Float32Array(N), hp=new Float32Array(N);
+  for(let pass=0;pass<3;pass++){
+    for(let y=0;y<n;y++)for(let x=0;x<n;x++){
+      let s=0,c=0;
+      for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+        s+=a[(((y+dy)+n)%n)*n+((x+dx)+n)%n]; c++;
+      }
+      b[y*n+x]=s/c;
+    }
+    for(let i=0;i<N;i++) a[i]= a[i] + (a[i]-b[i])*0.8;
+  }
+  for(let i=0;i<N;i++) hp[i]=a[i];
+  const idx=Array.from({length:N},(_,i)=>i).sort((p,q)=>hp[p]-hp[q]);
+  const d=new Float32Array(N);
+  idx.forEach((id,rank)=>d[id]=(rank+.5)/N);
+  return {n,d};
+})();
+function matrixFor(name){ return name==="blue noise"?BLUE:(MAT[name]||MAT["bayer 4×4"]); }
+
+/* ---- sample the video into the working grid ---------------------------- */
+function drawSource(ctx,w,h){
+  // The grid may be anisotropic (ASCII cells are taller than wide), so the fit
+  // is solved in output space and then scaled into the grid.
+  const vw=video.videoWidth||16, vh=video.videoHeight||9;
+  const kx=w/outW, ky=h/outH;
+  ctx.save();
+  ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
+  let dw=outW, dh=outH;
+  if(P.fit!=="stretch"){
+    const sa=vw/vh, da=outW/outH;
+    if((P.fit==="cover")===(sa>da)){ dh=outH; dw=outH*sa; } else { dw=outW; dh=outW/sa; }
+  }
+  ctx.drawImage(video,(outW-dw)/2*kx,(outH-dh)/2*ky,dw*kx,dh*ky);
+  ctx.restore();
+}
+
+/* ---- build luma grid + adjustments ------------------------------------- */
+function buildLuma(w,h,needRGB){
+  rgbLive=!!needRGB;
+  if(work.width!==w||work.height!==h){ work.width=w; work.height=h; }
+  drawSource(wctx,w,h);
+  const img = wctx.getImageData(0,0,w,h).data;
+  const N=w*h;
+  if(!L||L.length!==N){ L=new Float32Array(N); E=new Float32Array(N); EA=new Float32Array(N); }
+  if(needRGB && (!RGB||RGB.length!==N*3)) RGB=new Float32Array(N*3);
+
+  const bl=P.black, wh=Math.max(P.black+.001,P.white), inv=1/(wh-bl);
+  const c = P.contr, cf = c>=0 ? 1+c*2.2 : 1+c*0.95;
+  const g = 1/P.gamma, br=P.bright, po=P.poster|0;
+  // the same tone chain is applied per channel, so colour modes respond to the
+  // IMAGE panel exactly as the mono ones do
+  const tone = v=>{
+    v=(v-bl)*inv + br;
+    v=(v-.5)*cf+.5;
+    v=v<0?0:v>1?1:v;
+    if(g!==1) v=Math.pow(v,g);
+    if(po>1) v=Math.round(v*(po-1))/(po-1);
+    if(P.invert) v=1-v;
+    return v<0?0:v>1?1:v;
+  };
+  const sat=P.sat;
+
+  for(let i=0,j=0;i<N;i++,j+=4){
+    const r=img[j], gr=img[j+1], b=img[j+2];
+    if(needRGB){
+      let R=tone(r/255), G=tone(gr/255), B=tone(b/255);
+      if(sat!==1){
+        const y=0.2126*R+0.7152*G+0.0722*B;
+        R=clamp(y+(R-y)*sat,0,1); G=clamp(y+(G-y)*sat,0,1); B=clamp(y+(B-y)*sat,0,1);
+      }
+      RGB[i*3]=R*255; RGB[i*3+1]=G*255; RGB[i*3+2]=B*255;
+    }
+    let v=(0.2126*r+0.7152*gr+0.0722*b)/255;
+    v=(v-bl)*inv;                    // levels
+    v=v+br;                          // brightness
+    v=(v-.5)*cf+.5;                  // contrast
+    v=v<0?0:v>1?1:v;
+    if(g!==1) v=Math.pow(v,g);       // gamma
+    if(po>1) v=Math.round(v*(po-1))/(po-1);
+    if(P.invert) v=1-v;
+    L[i]=v;
+  }
+  gw=w; gh=h;
+  if(P.blur>0) boxBlur(L,w,h,P.blur);
+  if(P.sharp>0) unsharp(L,w,h,P.sharp);
+  if(P.edge>0||P.edgeOnly||(P.mode==="ascii"&&P.aEdge)) sobel(L,w,h);
+  if(P.edgeOnly){ for(let i=0;i<N;i++) L[i]=Math.min(1,E[i]*(0.5+P.edge*2)); }
+  else if(P.edge>0){ for(let i=0;i<N;i++) L[i]=clamp(L[i]*(1-P.edge*0.55)+E[i]*P.edge*1.2,0,1); }
+  summariseLuma();
+  applyWarp(w,h);
+  timeDisplace(w,h);
+  gridLineSmear(w,h);
+}
+
+/* ----------------------------------------------------------------------
+   Time displacement (slit-scan). A ring of recent luma grids lets each part
+   of the frame be sampled from a different moment. Playback and export both
+   render in order, so the ring fills naturally; exports pre-roll it first.
+   ---------------------------------------------------------------------- */
+let ring=[], ringW=0, ringH=0;
+function ringReset(){ ring=[]; ringC=[]; ringW=ringH=0; }
+let ringC=[];
+function ringPush(w,h){
+  if(w!==ringW||h!==ringH){ ring=[]; ringC=[]; ringW=w; ringH=h; }
+  ring.push(Float32Array.from(L));
+  if(rgbLive && RGB){                       // colour history, 8-bit to keep it small
+    const c=new Uint8ClampedArray(RGB.length);
+    for(let i=0;i<RGB.length;i++) c[i]=RGB[i];
+    ringC.push(c);
+  } else ringC.push(null);
+  const cap=Math.max(2,(P.tdDepth|0)+2);
+  while(ring.length>cap){ ring.shift(); ringC.shift(); }
+}
+function timeDisplace(w,h){
+  if(P.tdMode==="off"){ if(ring.length) ringReset(); return; }
+  ringPush(w,h);
+  const n=ring.length;
+  if(n<2) return;
+  const depth=Math.min(n-1,P.tdDepth|0);
+  const rev=P.tdDir==="reverse";
+  const cx=w/2, cy=h/2, maxR=Math.hypot(cx,cy);
+  const mix=P.tdMix;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=y*w+x;
+      let f;                                     // 0 = now, 1 = oldest
+      switch(P.tdMode){
+        case "columns": f=x/(w-1); break;
+        case "radial":  f=Math.hypot(x-cx,y-cy)/maxR; break;
+        case "luma":    f=1-L[i]; break;
+        default:        f=y/(h-1);
+      }
+      if(rev) f=1-f;
+      const age=Math.min(depth,Math.round(f*depth));
+      if(!age) continue;
+      const slot=n-1-age, past=ring[slot];
+      if(past) L[i]= mix>=1 ? past[i] : L[i]*(1-mix)+past[i]*mix;
+      const pastC=ringC[slot];
+      if(pastC && rgbLive && RGB){
+        for(let c=0;c<3;c++)
+          RGB[i*3+c] = mix>=1 ? pastC[i*3+c] : RGB[i*3+c]*(1-mix)+pastC[i*3+c]*mix;
+      }
+    }
+  }
+}
+
+/* Cheap fingerprint of the decoded frame, taken before warping so that animated
+   effects cannot disguise a stale grab. Drives the export's frame-ready check. */
+let lumaSig="", lumaFlat=false;
+function summariseLuma(){
+  let mn=1,mx=0,sum=0,wsum=0;
+  const step=Math.max(1,(L.length/1024)|0);
+  for(let i=0;i<L.length;i+=step){
+    const v=L[i];
+    if(v<mn) mn=v; if(v>mx) mx=v;
+    sum+=v; wsum+=v*((i%13)+1);
+  }
+  lumaFlat = (mx-mn)<0.008;
+  lumaSig  = sum.toFixed(4)+"|"+wsum.toFixed(4);
+}
+
+function boxBlur(src,w,h,radius){
+  const r=Math.max(1,Math.round(radius)); const t=new Float32Array(src.length);
+  for(let y=0;y<h;y++){ let s=0;
+    for(let x=-r;x<=r;x++) s+=src[y*w+clamp(x,0,w-1)];
+    for(let x=0;x<w;x++){ t[y*w+x]=s/(2*r+1);
+      s+=src[y*w+clamp(x+r+1,0,w-1)]-src[y*w+clamp(x-r,0,w-1)]; }
+  }
+  for(let x=0;x<w;x++){ let s=0;
+    for(let y=-r;y<=r;y++) s+=t[clamp(y,0,h-1)*w+x];
+    for(let y=0;y<h;y++){ src[y*w+x]=s/(2*r+1);
+      s+=t[clamp(y+r+1,0,h-1)*w+x]-t[clamp(y-r,0,h-1)*w+x]; }
+  }
+}
+function unsharp(src,w,h,amt){
+  const b=Float32Array.from(src); boxBlur(b,w,h,1);
+  for(let i=0;i<src.length;i++) src[i]=clamp(src[i]+(src[i]-b[i])*amt*2.2,0,1);
+}
+function sobel(src,w,h){
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const i=y*w+x;
+    const x0=clamp(x-1,0,w-1), x1=clamp(x+1,0,w-1), y0=clamp(y-1,0,h-1)*w, y1=clamp(y+1,0,h-1)*w, yc=y*w;
+    const tl=src[y0+x0],tc=src[y0+x],tr=src[y0+x1],
+          ml=src[yc+x0],mr=src[yc+x1],
+          bl=src[y1+x0],bc=src[y1+x],br=src[y1+x1];
+    const gx=(tr+2*mr+br)-(tl+2*ml+bl);
+    const gy=(bl+2*bc+br)-(tl+2*tc+tr);
+    E[i]=Math.min(1,Math.hypot(gx,gy));
+    EA[i]=Math.atan2(gy,gx);
+  }
+}
+
+/* ---- warp (wave / ripple / glitch) in luma space ------------------------ */
+let warpBuf=null, warpRGB=null, rgbLive=false;
+function applyWarp(w,h){
+  const t=renderTime;
+  const px = w/outW;                                   // grid px per output px
+  const wa=P.wAmp*px, ra=P.rAmp*px, ja=P.jAmp*px;
+  if(wa<=0 && ra<=0 && ja<=0) return;
+  if(!warpBuf||warpBuf.length!==L.length) warpBuf=new Float32Array(L.length);
+  warpBuf.set(L);
+  const doRGB = rgbLive && RGB && RGB.length===L.length*3;
+  if(doRGB){
+    if(!warpRGB||warpRGB.length!==RGB.length) warpRGB=new Float32Array(RGB.length);
+    warpRGB.set(RGB);
+  }
+  const wl=Math.max(1,P.wLen*px), rl=Math.max(1,P.rLen*px);
+  const cx=w/2, cy=h/2;
+  const jSeedRow = y=>{
+    const band=Math.max(1,P.jSize*px);
+    const b=Math.floor(y/band), tick=Math.floor(t*P.jRate);
+    const s=Math.sin(b*127.1+tick*311.7)*43758.5453;
+    return (s-Math.floor(s))*2-1;
+  };
+  for(let y=0;y<h;y++){
+    const jx = ja>0 ? jSeedRow(y)*ja*(Math.abs(jSeedRow(y))>0.55?1:0) : 0;
+    for(let x=0;x<w;x++){
+      let sx=x, sy=y;
+      if(wa>0){
+        if(P.wAxis==="horizontal"||P.wAxis==="both") sx += Math.sin((y/wl)*6.2831 + t*P.wSpd*3)*wa;
+        if(P.wAxis==="vertical"||P.wAxis==="both")   sy += Math.sin((x/wl)*6.2831 + t*P.wSpd*3)*wa;
+        if(P.wAxis==="radial"){
+          const dx=x-cx, dy=y-cy, a=Math.atan2(dy,dx);
+          const d=Math.sin((Math.hypot(dx,dy)/wl)*6.2831 - t*P.wSpd*3)*wa;
+          sx=x+Math.cos(a)*d; sy=y+Math.sin(a)*d;
+        }
+      }
+      if(ra>0){
+        const dx=x-cx, dy=y-cy, dist=Math.hypot(dx,dy)||1;
+        const d=Math.sin((dist/rl)*6.2831 - t*P.rSpd*3)*ra;
+        sx+=dx/dist*d; sy+=dy/dist*d;
+      }
+      sx+=jx;
+      const di=y*w+x;
+      L[di]=sampleBil(warpBuf,w,h,sx,sy);
+      if(doRGB){
+        RGB[di*3]  =sampleBil3(warpRGB,w,h,sx,sy,0);
+        RGB[di*3+1]=sampleBil3(warpRGB,w,h,sx,sy,1);
+        RGB[di*3+2]=sampleBil3(warpRGB,w,h,sx,sy,2);
+      }
+    }
+  }
+}
+function sampleBil3(a,w,h,x,y,c){
+  x=clamp(x,0,w-1.001); y=clamp(y,0,h-1.001);
+  const x0=x|0,y0=y|0,fx=x-x0,fy=y-y0,x1=Math.min(x0+1,w-1),y1=Math.min(y0+1,h-1);
+  const i00=(y0*w+x0)*3+c, i01=(y0*w+x1)*3+c, i10=(y1*w+x0)*3+c, i11=(y1*w+x1)*3+c;
+  return a[i00]*(1-fx)*(1-fy)+a[i01]*fx*(1-fy)+a[i10]*(1-fx)*fy+a[i11]*fx*fy;
+}
+function sampleBil(a,w,h,x,y){
+  x=clamp(x,0,w-1.001); y=clamp(y,0,h-1.001);
+  const x0=x|0,y0=y|0,fx=x-x0,fy=y-y0,x1=Math.min(x0+1,w-1),y1=Math.min(y0+1,h-1);
+  return a[y0*w+x0]*(1-fx)*(1-fy)+a[y0*w+x1]*fx*(1-fy)+a[y1*w+x0]*(1-fx)*fy+a[y1*w+x1]*fx*fy;
+}
+
+/* ====================================================================== */
+/*  RENDERERS                                                             */
+/* ====================================================================== */
+const hex2rgb = h=>{ h=h.replace("#",""); if(h.length===3) h=h.split("").map(c=>c+c).join("");
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; };
+
+const KERNELS = {
+  "floyd-steinberg":{d:16,k:[[1,0,7],[-1,1,3],[0,1,5],[1,1,1]]},
+  "atkinson":       {d:8, k:[[1,0,1],[2,0,1],[-1,1,1],[0,1,1],[1,1,1],[0,2,1]]},
+  "jarvis":         {d:48,k:[[1,0,7],[2,0,5],[-2,1,3],[-1,1,5],[0,1,7],[1,1,5],[2,1,3],[-2,2,1],[-1,2,3],[0,2,5],[1,2,3],[2,2,1]]},
+  "stucki":         {d:42,k:[[1,0,8],[2,0,4],[-2,1,2],[-1,1,4],[0,1,8],[1,1,4],[2,1,2],[-2,2,1],[-1,2,2],[0,2,4],[1,2,2],[2,2,1]]},
+  "burkes":         {d:32,k:[[1,0,8],[2,0,4],[-2,1,2],[-1,1,4],[0,1,8],[1,1,4],[2,1,2]]},
+  "sierra":         {d:32,k:[[1,0,5],[2,0,3],[-2,1,2],[-1,1,4],[0,1,5],[1,1,4],[2,1,2],[-1,2,2],[0,2,3],[1,2,2]]},
+  "sierra-2":       {d:16,k:[[1,0,4],[2,0,3],[-2,1,1],[-1,1,2],[0,1,3],[1,1,2],[2,1,1]]},
+  "sierra-lite":    {d:4, k:[[1,0,2],[-1,1,1],[0,1,1]]}
+};
+
+/* Quantise a value map to `levels` steps at grid resolution.
+   `phase` shifts/rotates the ordered screen (and flips the serpentine start) so
+   that separations printed on top of each other do not share a dot pattern. */
+function quantise(w,h,src,levels,phase,opts){
+  src = src||L;
+  // opts lets a mode with its own dither controls reuse this without touching the
+  // DITHER panel's settings
+  const algo = (opts&&opts.algo) || P.algo;
+  const thr  = (opts&&opts.thresh!=null) ? opts.thresh : P.dThresh;
+  const dAmt = (opts&&opts.amt!=null) ? opts.amt : P.dAmt;
+  const N=w*h; levels=Math.max(2,levels||(P.dLevels|0)); const q=new Float32Array(N);
+  const step=1/(levels-1), bias=(thr-0.5);
+  const K=KERNELS[algo];
+
+  if(K){                                                     // error diffusion
+    const buf=Float32Array.from(src), amt=dAmt, kd=K.d;
+    const flip = phase && phase.serp ? 1 : 0;
+    for(let y=0;y<h;y++){
+      const rev = P.serp && ((y+flip)&1);
+      for(let n=0;n<w;n++){
+        const x = rev ? w-1-n : n, i=y*w+x;
+        const v=buf[i]-bias;
+        const nv=clamp(Math.round(clamp(v,0,1)/step)*step,0,1);
+        q[i]=nv;
+        const err=(v-nv)*amt;
+        for(const [dx,dy,wt] of K.k){
+          const ddx = rev ? -dx : dx;
+          const nx=x+ddx, ny=y+dy;
+          if(nx<0||nx>=w||ny>=h) continue;
+          buf[ny*w+nx]+=err*wt/kd;
+        }
+      }
+    }
+  } else if(algo==="white noise"){
+    for(let i=0;i<N;i++){
+      const v=src[i]-bias+(Math.random()-.5)*step*1.15;
+      q[i]=clamp(Math.round(clamp(v,0,1)/step)*step,0,1);
+    }
+  } else {                                                   // ordered
+    const M=matrixFor(algo), n=M.n;
+    const rot = phase && phase.rot ? phase.rot : 0;
+    const co=Math.cos(rot), si=Math.sin(rot);
+    const ox = phase ? (phase.x|0) : 0, oy = phase ? (phase.y|0) : 0;
+    const wrap = v => ((v%n)+n)%n;
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const i=y*w+x;
+      const sx = rot ? Math.round(x*co - y*si) : x;
+      const sy = rot ? Math.round(x*si + y*co) : y;
+      const m=(M.d[wrap(sy+oy)*n+wrap(sx+ox)]-.5)*step*1.05;
+      const v=src[i]-bias+m;
+      q[i]=clamp(Math.round(clamp(v,0,1)/step)*step,0,1);
+    }
+  }
+  return q;
+}
+
+function paintGrid(vals,w,h){
+  if(small.width!==w||small.height!==h){ small.width=w; small.height=h; }
+  const img=sctx.createImageData(w,h), d=img.data;
+  const [ir,ig,ib]=hex2rgb(P.ink), [pr,pg,pb]=hex2rgb(P.paper);
+  for(let i=0;i<w*h;i++){
+    const v=vals[i], j=i*4;
+    d[j]  = pr+(ir-pr)*v;
+    d[j+1]= pg+(ig-pg)*v;
+    d[j+2]= pb+(ib-pb)*v;
+    d[j+3]= 255;
+  }
+  sctx.putImageData(img,0,0);
+  octx.imageSmoothingEnabled=false;
+  octx.drawImage(small,0,0,w,h,0,0,outW,outH);
+}
+
+function renderDither(){
+  const w=Math.max(2,Math.ceil(outW/P.scale)), h=Math.max(2,Math.ceil(outH/P.scale));
+  buildLuma(w,h,false);
+  paintGrid(quantise(w,h),w,h);
+}
+function renderThreshold(){
+  const w=Math.max(2,Math.ceil(outW/P.scale)), h=Math.max(2,Math.ceil(outH/P.scale));
+  buildLuma(w,h,false);
+  const q=new Float32Array(w*h);
+  for(let i=0;i<q.length;i++) q[i]=L[i]>P.dThresh?1:0;
+  paintGrid(q,w,h);
+}
+function renderGray(){
+  const w=Math.max(2,Math.ceil(outW/P.scale)), h=Math.max(2,Math.ceil(outH/P.scale));
+  buildLuma(w,h,false);
+  paintGrid(L,w,h);
+}
+/* ----------------------------------------------------------------------
+   Stipple. Dots are placed on a fine lattice, kept or dropped against a blue
+   noise threshold so their spacing stays even, then scattered and sized by
+   local tone — pen-and-ink rather than a printer's grid.
+   ---------------------------------------------------------------------- */
+function renderStipple(){
+  const cell=Math.max(1,P.stipGrid|0);
+  const w=Math.max(4,Math.ceil(outW/cell)), h=Math.max(4,Math.ceil(outH/cell));
+  buildLuma(w,h,false);
+  octx.fillStyle=P.paper; octx.fillRect(0,0,outW,outH);
+  octx.fillStyle=P.ink;
+  const M=BLUE, n=M.n;
+  const hash=(x,y,k)=>{ const v=Math.sin(x*127.1+y*311.7+k*74.7)*43758.5453; return v-Math.floor(v); };
+  const sx=outW/w, sy=outH/h;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const dark=1-L[y*w+x];
+      if(dark<=0.004) continue;
+      const thr=M.d[(y%n)*n+(x%n)];
+      if(dark*P.stipDens < thr) continue;                       // no dot here
+      const jx=(hash(x,y,1)-.5)*P.stipJit*sx;
+      const jy=(hash(x,y,2)-.5)*P.stipJit*sy;
+      const vary=1+(hash(x,y,3)-.5)*P.stipVary;
+      const r=Math.max(.25, Math.sqrt(dark)*0.62*Math.min(sx,sy)*P.stipSize*vary);
+      octx.beginPath();
+      octx.arc((x+.5)*sx+jx,(y+.5)*sy+jy,r,0,6.2832);
+      octx.fill();
+    }
+  }
+}
+
+/* ----------------------------------------------------------------------
+   8-BIT
+   Colour is quantised to a hardware palette, with the quantisation error
+   either diffused or screened so gradients survive a handful of colours.
+   Optional attribute clash restricts each cell to two entries, the way a
+   Spectrum did, which is most of what makes the era recognisable.
+   ---------------------------------------------------------------------- */
+let autoPal=null, autoPalKey="";
+/* median cut over the frame's own colours */
+function medianCut(rgb,count){
+  const step=Math.max(1,(rgb.length/3/4000)|0);
+  let box=[];
+  for(let i=0;i<rgb.length;i+=3*step) box.push([rgb[i],rgb[i+1],rgb[i+2]]);
+  if(!box.length) return [[0,0,0]];
+  let boxes=[box];
+  while(boxes.length<count){
+    let bi=-1, bs=-1;
+    boxes.forEach((b,i)=>{
+      if(b.length<2) return;
+      let mn=[255,255,255], mx=[0,0,0];
+      for(const c of b) for(let k=0;k<3;k++){ if(c[k]<mn[k])mn[k]=c[k]; if(c[k]>mx[k])mx[k]=c[k]; }
+      const span=Math.max(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2]);
+      if(span>bs){ bs=span; bi=i; }
+    });
+    if(bi<0||bs<=0) break;
+    const b=boxes[bi];
+    let mn=[255,255,255], mx=[0,0,0];
+    for(const c of b) for(let k=0;k<3;k++){ if(c[k]<mn[k])mn[k]=c[k]; if(c[k]>mx[k])mx[k]=c[k]; }
+    const ch=[0,1,2].reduce((a,k)=>(mx[k]-mn[k])>(mx[a]-mn[a])?k:a,0);
+    b.sort((p,q)=>p[ch]-q[ch]);
+    const mid=b.length>>1;
+    boxes.splice(bi,1,b.slice(0,mid),b.slice(mid));
+  }
+  return boxes.filter(b=>b.length).map(b=>{
+    const s=[0,0,0];
+    for(const c of b){ s[0]+=c[0]; s[1]+=c[1]; s[2]+=c[2]; }
+    return [s[0]/b.length,s[1]/b.length,s[2]/b.length];
+  });
+}
+function paletteFor(){
+  const named=PALETTES8[P.pxPal];
+  if(named) return named.map(hex2rgb);
+  if(P.pxLock && P.pxLock.length) return P.pxLock.map(hex2rgb);
+  // unlocked, the palette is re-read from the picture a couple of times a second;
+  // lock it once you like it, otherwise it shifts as the shot changes
+  const key=P.pxAuto+"|"+Math.floor(renderTime*2);
+  if(autoPalKey!==key || !autoPal){
+    autoPal=medianCut(RGB,P.pxAuto|0); autoPalKey=key;
+  }
+  return autoPal;
+}
+const toHex=c=>"#"+[0,1,2].map(i=>Math.round(clamp(c[i],0,255)).toString(16).padStart(2,"0")).join("");
+const lumaOf = c => 0.2126*c[0]+0.7152*c[1]+0.0722*c[2];
+/* A palette that is one colour at several brightnesses (Game Boy, Virtual Boy,
+   1-bit) has to be matched on tone: nearest-in-RGB would send a bright cyan to
+   black simply because it holds no red. Such a palette is a straight line through
+   colour space, so the test is geometric — fit the dominant axis and see how far
+   the entries stray from it. A hue test fails here, because ramps like the Game
+   Boy's drift from green towards yellow as they brighten.
+   Result is cached: palettes change rarely, this runs per frame. */
+const monoCache=new Map();
+function isMonoRamp(pal){
+  const key=pal.map(c=>c.join(",")).join("|");
+  if(monoCache.has(key)) return monoCache.get(key);
+  let out;
+  if(pal.length<3) out=true;
+  else{
+    const n=pal.length, mean=[0,0,0];
+    for(const c of pal) for(let k=0;k<3;k++) mean[k]+=c[k]/n;
+    const d=pal.map(c=>[c[0]-mean[0],c[1]-mean[1],c[2]-mean[2]]);
+    // covariance, then power-iterate for the dominant axis
+    const cov=[[0,0,0],[0,0,0],[0,0,0]];
+    for(const v of d) for(let a=0;a<3;a++) for(let b=0;b<3;b++) cov[a][b]+=v[a]*v[b]/n;
+    let ax=[1,1,1];
+    for(let it=0;it<24;it++){
+      const nx=[0,0,0];
+      for(let a=0;a<3;a++) for(let b=0;b<3;b++) nx[a]+=cov[a][b]*ax[b];
+      const len=Math.hypot(nx[0],nx[1],nx[2])||1;
+      ax=[nx[0]/len,nx[1]/len,nx[2]/len];
+    }
+    let along=0, perp=0;
+    for(const v of d){
+      const t=v[0]*ax[0]+v[1]*ax[1]+v[2]*ax[2];
+      along=Math.max(along,Math.abs(t));
+      const r=[v[0]-t*ax[0],v[1]-t*ax[1],v[2]-t*ax[2]];
+      perp=Math.max(perp,Math.hypot(r[0],r[1],r[2]));
+    }
+    out = along>1 && perp/along < 0.22;
+  }
+  monoCache.set(key,out);
+  return out;
+}
+function nearestIdx(pal,r,g,b){
+  let bi=0, bd=Infinity;
+  for(let i=0;i<pal.length;i++){
+    const p=pal[i], dr=r-p[0], dg=g-p[1], db=b-p[2];
+    // luma-weighted distance: closer to how the eye ranks the error
+    const d=dr*dr*0.30+dg*dg*0.59+db*db*0.11;
+    if(d<bd){ bd=d; bi=i; }
+  }
+  return bi;
+}
+
+function render8bit(){
+  const w=Math.max(2,Math.ceil(outW/P.scale)), h=Math.max(2,Math.ceil(outH/P.scale));
+  buildLuma(w,h,true);
+  const pal=paletteFor(), np=pal.length;
+  const idx=new Uint8Array(w*h);
+  const amt=P.pxAmt;
+
+  const mono=isMonoRamp(pal);
+  let palL=null, order=null;
+  if(mono){
+    // rank the ramp by brightness once, then treat the whole pass as tonal
+    order=pal.map((c,i)=>i).sort((a,b)=>lumaOf(pal[a])-lumaOf(pal[b]));
+    palL=order.map(i=>lumaOf(pal[i]));
+  }
+  const buf = mono ? (()=>{
+    const a=new Float32Array(w*h);
+    for(let i=0;i<w*h;i++) a[i]=0.2126*RGB[i*3]+0.7152*RGB[i*3+1]+0.0722*RGB[i*3+2];
+    return a;
+  })() : Float32Array.from(RGB);
+  const nearestTone = v=>{
+    let bi=0, bd=Infinity;
+    for(let i=0;i<palL.length;i++){ const d=Math.abs(v-palL[i]); if(d<bd){ bd=d; bi=i; } }
+    return bi;
+  };
+  const diffusion = P.pxDither==="floyd-steinberg" ? KERNELS["floyd-steinberg"]
+                  : P.pxDither==="atkinson" ? KERNELS["atkinson"] : null;
+
+  if(diffusion){
+    const kd=diffusion.d;
+    for(let y=0;y<h;y++){
+      const rev = P.serp && (y&1);
+      for(let n=0;n<w;n++){
+        const x = rev ? w-1-n : n, i=y*w+x;
+        let err=null, err3=null;
+        if(mono){
+          const v=buf[i], t=nearestTone(v);
+          idx[i]=order[t];
+          err=(v-palL[t])*amt;
+        } else {
+          const j=i*3, r=buf[j], g=buf[j+1], b=buf[j+2];
+          const k=nearestIdx(pal,r,g,b); idx[i]=k;
+          err3=[(r-pal[k][0])*amt,(g-pal[k][1])*amt,(b-pal[k][2])*amt];
+        }
+        for(const [dx,dy,wt] of diffusion.k){
+          const nx=x+(rev?-dx:dx), ny=y+dy;
+          if(nx<0||nx>=w||ny>=h) continue;
+          const ni=ny*w+nx, f=wt/kd;
+          if(mono) buf[ni]+=err*f;
+          else { const nj=ni*3; buf[nj]+=err3[0]*f; buf[nj+1]+=err3[1]*f; buf[nj+2]+=err3[2]*f; }
+        }
+      }
+    }
+  } else {
+    // ordered / random: nudge the colour before the lookup so neighbouring
+    // pixels land on different palette entries and read as a blend
+    const M = P.pxDither==="none" ? null
+            : P.pxDither==="noise" ? "rnd" : matrixFor(P.pxDither.replace("bayer","bayer"));
+    const spread = mono ? 255/Math.max(1,np-1)*0.9*amt
+                        : 255/Math.max(2,Math.cbrt(np))*0.55*amt;
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const i=y*w+x;
+      let d=0;
+      if(M==="rnd") d=(Math.random()-.5)*spread;
+      else if(M) d=(M.d[(y%M.n)*M.n+(x%M.n)]-.5)*spread;
+      if(mono) idx[i]=order[nearestTone(buf[i]+d)];
+      else { const j=i*3; idx[i]=nearestIdx(pal,buf[j]+d,buf[j+1]+d,buf[j+2]+d); }
+    }
+  }
+
+  if(P.pxClash) attributeClash(idx,w,h,pal);
+
+  // paint at grid resolution, then blow up with hard edges
+  if(small.width!==w||small.height!==h){ small.width=w; small.height=h; }
+  const img=sctx.createImageData(w,h), d=img.data;
+  for(let i=0;i<w*h;i++){
+    const c=pal[idx[i]], j=i*4;
+    d[j]=c[0]; d[j+1]=c[1]; d[j+2]=c[2]; d[j+3]=255;
+  }
+  if(P.pxOutline>0){
+    // Pixels sitting on a colour break are pulled toward the outline ink and then
+    // snapped back onto the palette, so the frame never gains an off-palette colour.
+    const [orr,og,ob]=hex2rgb(P.pxOutCol), a=P.pxOutline;
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const i=y*w+x;
+      const right = x<w-1 && idx[i+1]!==idx[i];
+      const down  = y<h-1 && idx[i+w]!==idx[i];
+      if(!right&&!down) continue;
+      const c=pal[idx[i]];
+      const k=nearestIdx(pal, c[0]*(1-a)+orr*a, c[1]*(1-a)+og*a, c[2]*(1-a)+ob*a);
+      const o=pal[k], j=i*4;
+      d[j]=o[0]; d[j+1]=o[1]; d[j+2]=o[2];
+    }
+  }
+  sctx.putImageData(img,0,0);
+  octx.imageSmoothingEnabled=false;
+  octx.drawImage(small,0,0,w,h,0,0,outW,outH);
+}
+
+/* Two colours per cell, chosen as the pair that fits the cell best. */
+function attributeClash(idx,w,h,pal){
+  const cell=Math.max(2,P.pxCell|0);
+  const count=new Uint16Array(pal.length);
+  for(let cy=0;cy<h;cy+=cell){
+    for(let cx=0;cx<w;cx+=cell){
+      count.fill(0);
+      const x1=Math.min(cx+cell,w), y1=Math.min(cy+cell,h);
+      for(let y=cy;y<y1;y++)for(let x=cx;x<x1;x++) count[idx[y*w+x]]++;
+      let a=-1,b=-1,ca=0,cb=0;
+      for(let i=0;i<count.length;i++){
+        if(count[i]>ca){ b=a; cb=ca; a=i; ca=count[i]; }
+        else if(count[i]>cb){ b=i; cb=count[i]; }
+      }
+      if(a<0) continue;
+      if(b<0) b=a;
+      const pa=pal[a], pb=pal[b];
+      for(let y=cy;y<y1;y++)for(let x=cx;x<x1;x++){
+        const i=y*w+x;
+        if(idx[i]===a||idx[i]===b) continue;
+        const p=pal[idx[i]];
+        const da=(p[0]-pa[0])**2*0.3+(p[1]-pa[1])**2*0.59+(p[2]-pa[2])**2*0.11;
+        const db=(p[0]-pb[0])**2*0.3+(p[1]-pb[1])**2*0.59+(p[2]-pb[2])**2*0.11;
+        idx[i]= da<db ? a : b;
+      }
+    }
+  }
+}
+
+/* ----------------------------------------------------------------------
+   LCD — a monochrome phone screen. The picture is reduced to a 1-bit grid of
+   square pixels with a gap between them; each lit pixel casts a soft shadow
+   onto the glass behind it (the liquid-crystal layer sits a little above the
+   reflector), the backlight blooms up from the bottom edge, and the glass
+   itself carries a faint, fixed grain.
+   ---------------------------------------------------------------------- */
+const lcdMaskCv=document.createElement("canvas"), lmctx=lcdMaskCv.getContext("2d");
+let lcdGlassCv=null, lcdGlassKey="";
+
+function lcdGlass(){
+  const key=outW+"x"+outH;
+  if(lcdGlassKey===key && lcdGlassCv) return lcdGlassCv;
+  lcdGlassCv=lcdGlassCv||document.createElement("canvas");
+  lcdGlassCv.width=outW; lcdGlassCv.height=outH;
+  const gx=lcdGlassCv.getContext("2d");
+  // coarse mottling, smoothly scaled up, under fine per-pixel grain
+  const mw=Math.max(4,Math.ceil(outW/28)), mh=Math.max(4,Math.ceil(outH/28));
+  const mcv=document.createElement("canvas"); mcv.width=mw; mcv.height=mh;
+  const mx=mcv.getContext("2d"), mi=mx.createImageData(mw,mh);
+  for(let i=0;i<mw*mh;i++){ const v=128+(Math.random()-.5)*70, j=i*4; mi.data[j]=mi.data[j+1]=mi.data[j+2]=v; mi.data[j+3]=255; }
+  mx.putImageData(mi,0,0);
+  gx.imageSmoothingEnabled=true;
+  gx.drawImage(mcv,0,0,outW,outH);
+  const img=gx.getImageData(0,0,outW,outH), d=img.data;
+  for(let i=0;i<d.length;i+=4){
+    const n=(Math.random()-.5)*90;
+    const v=clamp(d[i]+n,0,255);
+    d[i]=d[i+1]=d[i+2]=v;
+  }
+  gx.putImageData(img,0,0);
+  lcdGlassKey=key;
+  return lcdGlassCv;
+}
+
+function renderLcd(){
+  const pitch=Math.max(3,P.lcdCell);
+  const cols=Math.max(2,Math.round(outW/pitch)), rows=Math.max(2,Math.round(outH/pitch));
+  const cw=outW/cols, chh=outH/rows;
+  buildLuma(cols,rows,false);
+
+  // 1-bit: a pixel is lit where the picture is dark
+  const lit=new Uint8Array(cols*rows);
+  if(P.lcdDither==="threshold"){
+    for(let i=0;i<lit.length;i++) lit[i]= L[i]<P.lcdThresh ? 1 : 0;
+  } else {
+    const q=quantise(cols,rows,L,2,null,{algo:P.lcdDither, thresh:P.lcdThresh, amt:1});
+    for(let i=0;i<lit.length;i++) lit[i]= q[i]<.5 ? 1 : 0;
+  }
+
+  // glass + backlight
+  octx.save();
+  octx.globalCompositeOperation="source-over"; octx.globalAlpha=1;
+  octx.fillStyle=P.lcdScreen; octx.fillRect(0,0,outW,outH);
+  if(P.lcdGlow>0){
+    const [gr,gg,gb]=hex2rgb(P.lcdGlowCol);
+    const R=Math.max(outW,outH)*.8;
+    const g=octx.createRadialGradient(outW/2,outH*1.1,0,outW/2,outH*1.1,R);
+    g.addColorStop(0,`rgba(${gr},${gg},${gb},${P.lcdGlow})`);
+    g.addColorStop(.55,`rgba(${gr},${gg},${gb},${P.lcdGlow*.35})`);
+    g.addColorStop(1,`rgba(${gr},${gg},${gb},0)`);
+    octx.fillStyle=g; octx.fillRect(0,0,outW,outH);
+  }
+
+  // pixel rectangles snapped to whole device pixels so the gaps stay crisp
+  const gap=P.lcdGap*Math.min(cw,chh);
+  const cell=(x,y,ctx)=>{
+    const x0=Math.round(x*cw+gap/2), x1=Math.max(x0+1,Math.round((x+1)*cw-gap/2));
+    const y0=Math.round(y*chh+gap/2), y1=Math.max(y0+1,Math.round((y+1)*chh-gap/2));
+    ctx.rect(x0,y0,x1-x0,y1-y0);
+  };
+
+  if(P.lcdGhost>0){                                   // faint unlit segments
+    octx.globalAlpha=P.lcdGhost; octx.fillStyle=P.lcdInk;
+    octx.beginPath();
+    for(let y=0;y<rows;y++) for(let x=0;x<cols;x++) cell(x,y,octx);
+    octx.fill();
+    octx.globalAlpha=1;
+  }
+
+  if(lcdMaskCv.width!==outW||lcdMaskCv.height!==outH){ lcdMaskCv.width=outW; lcdMaskCv.height=outH; }
+  lmctx.clearRect(0,0,outW,outH);
+  lmctx.fillStyle=P.lcdInk;
+  lmctx.beginPath();
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++) if(lit[y*cols+x]) cell(x,y,lmctx);
+  lmctx.fill();
+
+  // one draw casts the shadow from the pixels' own shape, then lays them on top
+  if(P.lcdShadow>0){
+    const [ir,ig,ib]=hex2rgb(P.lcdInk);
+    octx.shadowColor=`rgba(${ir},${ig},${ib},${(P.lcdShadow*.6).toFixed(3)})`;
+    octx.shadowOffsetX=P.lcdShX*cw;
+    octx.shadowOffsetY=P.lcdShY*chh;
+    octx.shadowBlur=P.lcdShBlur*Math.min(cw,chh)*1.5;
+  }
+  octx.drawImage(lcdMaskCv,0,0);
+  octx.restore();
+
+  if(P.lcdTexture>0){
+    octx.save();
+    octx.globalAlpha=P.lcdTexture*.5;
+    octx.globalCompositeOperation="soft-light";
+    octx.drawImage(lcdGlass(),0,0);
+    octx.restore();
+  }
+}
+
+function renderContour(){
+  const w=Math.max(2,Math.ceil(outW/P.scale)), h=Math.max(2,Math.ceil(outH/P.scale));
+  buildLuma(w,h,false);
+  const lv=Math.max(2,P.ctLevels|0), q=new Float32Array(w*h), band=new Int16Array(w*h);
+  for(let i=0;i<w*h;i++) band[i]=Math.round(L[i]*(lv-1));
+  const r=P.ctWidth|0;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const i=y*w+x; let edge=false;
+    for(let dy=-r;dy<=r&&!edge;dy++)for(let dx=-r;dx<=r;dx++){
+      const nx=clamp(x+dx,0,w-1), ny=clamp(y+dy,0,h-1);
+      if(band[ny*w+nx]!==band[i]){ edge=true; break; }
+    }
+    q[i]= edge?1: band[i]/(lv-1)*P.ctFill;
+  }
+  paintGrid(q,w,h);
+}
+
+/* advance width of a monospace glyph at 1px font size (cached per font) */
+const _adv={};
+function advanceRatio(family,bold){
+  const key=(bold?"b|":"n|")+family;
+  if(_adv[key]) return _adv[key];
+  tctx.save(); tctx.font=(bold?"bold ":"")+"100px "+family;
+  const w=tctx.measureText("M").width/100; tctx.restore();
+  return _adv[key]= w>0.05 ? w : 0.6;
+}
+
+/* ----------------------------------------------------------------- riso
+   Each ink is a separation: its own density map, its own dither screen, its own
+   registration offset, printed semi-transparent so the overlaps mix like ink.  */
+function solveDensities(inks, rgb, out, n){
+  // Absorption space: a pixel's ink mix is fitted by least squares to the colour
+  // the source wants, then clamped to what a press can actually lay down.
+  const A=inks.map(c=>[(255-c[0])/255,(255-c[1])/255,(255-c[2])/255]);
+  const AtA=[], Att=[];
+  for(let i=0;i<n;i++){
+    AtA.push([]);
+    for(let j=0;j<n;j++) AtA[i].push(A[i][0]*A[j][0]+A[i][1]*A[j][1]+A[i][2]*A[j][2] + (i===j?0.03:0));
+  }
+  // invert AtA (n<=4) by Gauss-Jordan
+  const M=AtA.map((row,i)=>row.concat(Array.from({length:n},(_,j)=>i===j?1:0)));
+  for(let c=0;c<n;c++){
+    let piv=c; for(let r=c+1;r<n;r++) if(Math.abs(M[r][c])>Math.abs(M[piv][c])) piv=r;
+    [M[c],M[piv]]=[M[piv],M[c]];
+    const d=M[c][c]||1e-6;
+    for(let k=c;k<2*n;k++) M[c][k]/=d;
+    for(let r=0;r<n;r++){ if(r===c) continue; const f=M[r][c];
+      for(let k=c;k<2*n;k++) M[r][k]-=f*M[c][k]; }
+  }
+  const inv=M.map(r=>r.slice(n));
+  // per-pixel: d = inv * (A^T t)
+  const px=rgb.length/3;
+  for(let p=0;p<px;p++){
+    const t0=1-rgb[p*3]/255, t1=1-rgb[p*3+1]/255, t2=1-rgb[p*3+2]/255;
+    for(let i=0;i<n;i++) Att[i]=A[i][0]*t0+A[i][1]*t1+A[i][2]*t2;
+    for(let i=0;i<n;i++){
+      let v=0; for(let j=0;j<n;j++) v+=inv[i][j]*Att[j];
+      out[i][p]=clamp(v,0,1);
+    }
+  }
+}
+
+function renderRiso(){
+  const w=Math.max(2,Math.ceil(outW/P.scale)), h=Math.max(2,Math.ceil(outH/P.scale));
+  const n=clamp(P.rzInks|0,2,4);
+  const colour = P.rzSep==="colour";
+  buildLuma(w,h,colour);
+
+  const inks=[P.rzInk1,P.rzInk2,P.rzInk3,P.rzInk4].slice(0,n).map(hex2rgb);
+  const D=[]; for(let i=0;i<n;i++) D.push(new Float32Array(w*h));
+
+  if(colour){
+    solveDensities(inks,RGB,D,n);
+  } else if(P.rzSep==="tonal build"){
+    for(let p=0;p<w*h;p++){
+      const t=(1-L[p])*n;
+      for(let i=0;i<n;i++) D[i][p]=clamp(t-i,0,1);
+    }
+  } else {                                    // mono offset: same plate per ink
+    for(let p=0;p<w*h;p++){ const t=1-L[p]; for(let i=0;i<n;i++) D[i][p]=t; }
+  }
+  if(P.rzDensity!==1) for(let i=0;i<n;i++) for(let p=0;p<w*h;p++) D[i][p]=clamp(D[i][p]*P.rzDensity,0,1);
+
+  octx.globalCompositeOperation="source-over";
+  octx.fillStyle=P.paper; octx.fillRect(0,0,outW,outH);
+  octx.imageSmoothingEnabled=false;
+
+  if(small.width!==w||small.height!==h){ small.width=w; small.height=h; }
+  const base=P.rzAngle*Math.PI/180;
+  for(let i=0;i<n;i++){
+    const screen = P.rzScreens
+      ? {x:i*3, y:i*5, rot:i*15*Math.PI/180, serp:i%2}
+      : {x:0,y:0,rot:0,serp:0};
+    const q=quantise(w,h,D[i],2,screen);
+    const img=sctx.createImageData(w,h), d=img.data, [r,g,b]=inks[i];
+    for(let p=0;p<w*h;p++){
+      const j=p*4;
+      d[j]=r; d[j+1]=g; d[j+2]=b; d[j+3]=q[p]>0.5?255:0;
+    }
+    sctx.putImageData(img,0,0);
+    const a=base+i*2*Math.PI/n;
+    let dx=Math.cos(a)*P.rzOffset, dy=Math.sin(a)*P.rzOffset;
+    if(P.rzWobble>0){                       // plates drift a little, as on a real drum
+      const t=renderTime*P.rzWobRate, k=i*7.13;
+      dx += (Math.sin(t*2.1+k)+Math.sin(t*1.3+k*1.7)*.6)*P.rzWobble*.5;
+      dy += (Math.cos(t*1.7+k*1.3)+Math.sin(t*2.9+k)*.5)*P.rzWobble*.5;
+    }
+    // overscan by the offset so a shifted plate never exposes bare paper at the edge
+    const pad=Math.ceil(Math.abs(P.rzOffset)+Math.abs(P.rzWobble));
+    octx.save();
+    octx.globalCompositeOperation = P.rzBlend==="normal" ? "source-over" : P.rzBlend;
+    octx.globalAlpha=P.rzAlpha;
+    octx.drawImage(small,0,0,w,h,dx-pad,dy-pad,outW+pad*2,outH+pad*2);
+    octx.restore();
+  }
+  octx.globalCompositeOperation="source-over";
+}
+
+/* ----------------------------------------------------------------------
+   Shape-matched ASCII. Each glyph is rendered once into a small bitmap; a cell
+   then picks the glyph whose pattern best fits the image patch, instead of
+   matching brightness alone. Candidates are limited to glyphs of a similar
+   mean tone, which keeps the search cheap enough for video.
+   ---------------------------------------------------------------------- */
+const GW=4, GH=6;                       // glyph patch resolution
+let atlas=null, atlasKey="";
+function buildAtlas(ramp,family,bold){
+  const key=ramp+"|"+family+"|"+bold;
+  if(atlasKey===key) return atlas;
+  const cv=document.createElement("canvas"); cv.width=GW*4; cv.height=GH*4;
+  const cx=cv.getContext("2d",{willReadFrequently:true});
+  const glyphs=[...ramp].map(ch=>{
+    cx.fillStyle="#000"; cx.fillRect(0,0,cv.width,cv.height);
+    cx.fillStyle="#fff"; cx.textAlign="center"; cx.textBaseline="middle";
+    cx.font=(bold?"bold ":"")+(cv.height*0.78).toFixed(1)+"px "+family;
+    cx.fillText(ch,cv.width/2,cv.height/2);
+    const d=cx.getImageData(0,0,cv.width,cv.height).data;
+    const v=new Float32Array(GW*GH); let mean=0;
+    for(let gy=0;gy<GH;gy++)for(let gx=0;gx<GW;gx++){
+      let sum=0,cnt=0;
+      for(let y=Math.floor(gy*cv.height/GH);y<Math.floor((gy+1)*cv.height/GH);y++)
+        for(let x=Math.floor(gx*cv.width/GW);x<Math.floor((gx+1)*cv.width/GW);x++){
+          sum+=d[(y*cv.width+x)*4]/255; cnt++;
+        }
+      const val=sum/Math.max(1,cnt);
+      v[gy*GW+gx]=val; mean+=val;
+    }
+    mean/=GW*GH;
+    return {ch,v,mean};
+  });
+  glyphs.sort((a,b)=>a.mean-b.mean);
+  atlasKey=key; atlas={glyphs,means:Float32Array.from(glyphs.map(g=>g.mean))};
+  return atlas;
+}
+function matchGlyph(patch,tone,A,window){
+  const {glyphs,means}=A;
+  // candidates: glyphs whose coverage is near the patch's own tone
+  let lo=0, hi=glyphs.length-1;
+  while(lo<hi){ const mid=(lo+hi)>>1; if(means[mid]<tone-window) lo=mid+1; else hi=mid; }
+  let best=null, bestErr=Infinity;
+  for(let i=lo;i<glyphs.length && means[i]<=tone+window;i++){
+    const v=glyphs[i].v; let err=0;
+    for(let k=0;k<GW*GH;k++){ const d=patch[k]-v[k]; err+=d*d; }
+    if(err<bestErr){ bestErr=err; best=glyphs[i]; }
+  }
+  return best;
+}
+
+function renderAscii(){
+  const cols=Math.max(4,P.cols|0);
+  const cellW=outW/cols, cellH=cellW*P.cellAR;
+  const rows=Math.max(2,Math.ceil(outH/cellH));
+  const needRGB = P.aColor==="sample source";
+  // Shape matching needs sub-cell detail, so the grid is built at GW×GH per cell
+  // and averaged back down for the tone-based path.
+  const match = P.aMatch;
+  const gw = match ? cols*GW : cols, gh = match ? rows*GH : rows;
+  buildLuma(gw,gh,needRGB);
+  let cellL=L, cellRGB=RGB;
+  if(match){
+    cellL=new Float32Array(cols*rows);
+    if(needRGB) cellRGB=new Float32Array(cols*rows*3);
+    for(let cy=0;cy<rows;cy++)for(let cx=0;cx<cols;cx++){
+      let sum=0, r=0, g=0, b=0;
+      for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){
+        const i=(cy*GH+y)*gw+(cx*GW+x);
+        sum+=L[i];
+        if(needRGB){ r+=RGB[i*3]; g+=RGB[i*3+1]; b+=RGB[i*3+2]; }
+      }
+      const c=cy*cols+cx, k=GW*GH;
+      cellL[c]=sum/k;
+      if(needRGB){ cellRGB[c*3]=r/k; cellRGB[c*3+1]=g/k; cellRGB[c*3+2]=b/k; }
+    }
+  }
+
+  let ramp = P.charset==="custom" ? (P.custom||" .:#") : CHARSETS[P.charset];
+  if(P.rampInv) ramp=[...ramp].reverse().join("");
+  const n=ramp.length;
+  const [ir,ig,ib]=hex2rgb(P.ink), [tr,tg,tb]=hex2rgb(P.tint);
+
+  octx.fillStyle=P.paper; octx.fillRect(0,0,outW,outH);
+  octx.textAlign="center"; octx.textBaseline="middle";
+  // size the glyph from its measured advance so one character fills one cell
+  const fpx = cellW/advanceRatio(FONTS[P.font],P.bold)*P.fScale;
+  octx.font=(P.bold?"bold ":"")+fpx.toFixed(2)+"px "+FONTS[P.font];
+  octx.fillStyle=P.ink;
+
+  const M = P.aDither==="none"?null:(P.aDither==="noise"?"rnd":matrixFor(P.aDither));
+  const A = match ? buildAtlas(ramp,FONTS[P.font],P.bold) : null;
+  const patch = match ? new Float32Array(GW*GH) : null;
+  const window = 0.06+(1-P.aMatchW)*0.5;      // wider window = more tonal, less structural
+  for(let y=0;y<rows;y++){
+    const cy=(y+.5)*cellH;
+    for(let x=0;x<cols;x++){
+      const i=y*cols+x;
+      let v=cellL[i];
+      if(M==="rnd") v+=(Math.random()-.5)/n;
+      else if(M) v+=(M.d[(y%M.n)*M.n+(x%M.n)]-.5)/n;
+      v=clamp(v,0,1);
+      let ch;
+      if(match){
+        for(let gy=0;gy<GH;gy++)for(let gx=0;gx<GW;gx++)
+          patch[gy*GW+gx]=L[(y*GH+gy)*gw+(x*GW+gx)];
+        const g=matchGlyph(patch,v,A,window);
+        ch = g ? g.ch : ramp[clamp(Math.floor(v*n),0,n-1)];
+        if(ch===" ") continue;
+        if(P.aColor==="sample source"){
+          octx.fillStyle=`rgb(${cellRGB[i*3]|0},${cellRGB[i*3+1]|0},${cellRGB[i*3+2]|0})`;
+        } else if(P.aColor==="duotone"){
+          octx.fillStyle=`rgb(${(tr+(ir-tr)*v)|0},${(tg+(ig-tg)*v)|0},${(tb+(ib-tb)*v)|0})`;
+        }
+        octx.fillText(ch,(x+.5)*cellW,cy);
+        continue;
+      }
+      if(P.aEdge && E[i]>1-P.aEdgeT){
+        const a=((EA[i]*180/Math.PI)+90+180)%180;
+        const b=Math.round(a/45)%4;
+        ch=["-","\\","|","/"][b];
+      } else {
+        ch=ramp[clamp(Math.floor(v*n),0,n-1)];
+      }
+      if(ch===" ") continue;
+      if(P.aColor==="sample source"){
+        octx.fillStyle=`rgb(${cellRGB[i*3]|0},${cellRGB[i*3+1]|0},${cellRGB[i*3+2]|0})`;
+      } else if(P.aColor==="duotone"){
+        octx.fillStyle=`rgb(${(tr+(ir-tr)*v)|0},${(tg+(ig-tg)*v)|0},${(tb+(ib-tb)*v)|0})`;
+      }
+      octx.fillText(ch,(x+.5)*cellW,cy);
+    }
+  }
+}
+
+function renderHalftone(){
+  const cell=Math.max(2,P.htCell);
+  const gwid=clamp(Math.ceil(outW/Math.max(1,cell/3)),16,1400);
+  const ghgt=Math.max(8,Math.round(gwid*outH/outW));
+  buildLuma(gwid,ghgt,false);
+
+  octx.fillStyle=P.paper; octx.fillRect(0,0,outW,outH);
+  octx.fillStyle=P.ink; octx.strokeStyle=P.ink;
+  octx.imageSmoothingEnabled=P.htSoft;
+
+  const a=P.htAngle*Math.PI/180, ca=Math.cos(a), sa=Math.sin(a);
+  const R=Math.hypot(outW,outH)/2, cx=outW/2, cy=outH/2;
+  const steps=Math.ceil(R/cell)+1;
+  const sxk=gwid/outW, syk=ghgt/outH;
+
+  for(let v=-steps;v<=steps;v++){
+    for(let u=-steps;u<=steps;u++){
+      const ox=u*cell, oy=v*cell;
+      const x=cx+ox*ca-oy*sa, y=cy+ox*sa+oy*ca;
+      if(x<-cell||y<-cell||x>outW+cell||y>outH+cell) continue;
+      const lv=sampleBil(L,gwid,ghgt,x*sxk,y*syk);
+      if(lv<=0.004) continue;
+      // shapes are area-corrected: coverage of one cell tracks luminance
+      const g=P.htGain, k=cell*g;
+      octx.save(); octx.translate(x,y); octx.rotate(a);
+      switch(P.htShape){
+        case "square": { const s=Math.sqrt(lv)*k; octx.fillRect(-s/2,-s/2,s,s); break; }
+        case "diamond": { const d=Math.sqrt(lv/2)*k;
+          octx.beginPath(); octx.moveTo(0,-d); octx.lineTo(d,0); octx.lineTo(0,d); octx.lineTo(-d,0); octx.closePath(); octx.fill(); break; }
+        case "line": { const t=lv*k; octx.fillRect(-cell*.55,-t/2,cell*1.1,t); break; }
+        case "cross": { const t=(1-Math.sqrt(Math.max(0,1-lv)))*k;
+          octx.fillRect(-cell*.55,-t/2,cell*1.1,t); octx.fillRect(-t/2,-cell*.55,t,cell*1.1); break; }
+        case "ring": { const rr=cell*.36, lw=Math.min(rr*1.9,lv*k*0.46);
+          if(lw>.2){ octx.lineWidth=lw; octx.beginPath(); octx.arc(0,0,rr,0,6.2832); octx.stroke(); } break; }
+        case "triangle": { const s=Math.sqrt(lv*4/Math.sqrt(3))*k, h=s*Math.sqrt(3)/2;
+          octx.beginPath(); octx.moveTo(0,-h*2/3); octx.lineTo(s/2,h/3); octx.lineTo(-s/2,h/3); octx.closePath(); octx.fill(); break; }
+        default: { const r=Math.sqrt(lv/Math.PI)*k; octx.beginPath(); octx.arc(0,0,r,0,6.2832); octx.fill(); }
+      }
+      octx.restore();
+    }
+  }
+}
+
+/* ------------------------------------------------------------- overlays */
+let noiseCv=null,noiseCtx=null;
+/* Ink spreads into stock: blur the plate slightly and re-harden it, which fattens
+   dots and lets neighbours touch, the way a real print gains. */
+function inkBleed(){
+  if(P.bleed<=0) return;
+  if(tmp.width!==outW||tmp.height!==outH){ tmp.width=outW; tmp.height=outH; }
+  tctx.setTransform(1,0,0,1,0,0); tctx.globalCompositeOperation="source-over"; tctx.globalAlpha=1;
+  tctx.clearRect(0,0,outW,outH);
+  tctx.filter=`blur(${(0.4+P.bleed*2.2).toFixed(2)}px)`;
+  tctx.drawImage(out,0,0);
+  tctx.filter="none";
+  const inkLuma=(([r,g,b])=>0.2126*r+0.7152*g+0.0722*b)(hex2rgb(P.ink));
+  const paperLuma=(([r,g,b])=>0.2126*r+0.7152*g+0.0722*b)(hex2rgb(P.paper));
+  octx.save();
+  octx.globalAlpha=Math.min(1,.35+P.bleed*.65);
+  octx.globalCompositeOperation = inkLuma>paperLuma ? "lighten" : "darken";
+  for(let i=0;i<1+Math.round(P.bleed*2);i++) octx.drawImage(tmp,0,0);
+  octx.restore();
+}
+
+/* Procedural stock texture — long fibres rather than uniform grain. */
+let fibreCv=null, fibreCtx=null, fibreKey="";
+function paperFibre(){
+  if(P.fibre<=0) return;
+  const sc=P.fibreSc|0, w=Math.ceil(outW/sc), h=Math.ceil(outH/sc);
+  const key=`${w}x${h}`;
+  if(!fibreCv){ fibreCv=document.createElement("canvas"); fibreCtx=fibreCv.getContext("2d"); }
+  if(fibreKey!==key){                                  // static, like real stock
+    fibreCv.width=w; fibreCv.height=h; fibreKey=key;
+    const img=fibreCtx.createImageData(w,h), d=img.data;
+    const base=new Float32Array(w*h);
+    for(let i=0;i<w*h;i++) base[i]=Math.random();
+    for(let y=0;y<h;y++){                               // smear horizontally into fibres
+      let acc=base[y*w];
+      for(let x=0;x<w;x++){
+        acc=acc*.72+base[y*w+x]*.28;
+        const v=128+(acc-.5)*255;
+        const j=(y*w+x)*4; d[j]=d[j+1]=d[j+2]=v; d[j+3]=255;
+      }
+    }
+    fibreCtx.putImageData(img,0,0);
+  }
+  octx.save();
+  octx.globalAlpha=P.fibre*.5;
+  octx.globalCompositeOperation="overlay";
+  octx.imageSmoothingEnabled=true;
+  octx.drawImage(fibreCv,0,0,outW,outH);
+  octx.restore();
+}
+
+function overlays(){
+  const t=renderTime;
+  inkBleed();
+  paperFibre();
+  if(P.glow>0){
+    if(tmp.width!==outW||tmp.height!==outH){ tmp.width=outW; tmp.height=outH; }
+    tctx.clearRect(0,0,outW,outH);
+    tctx.filter=`blur(${(2+P.glow*14).toFixed(1)}px)`;
+    tctx.drawImage(out,0,0); tctx.filter="none";
+    octx.save(); octx.globalCompositeOperation="lighter"; octx.globalAlpha=P.glow*.85;
+    octx.drawImage(tmp,0,0); octx.restore();
+  }
+  if(P.scan>0){
+    octx.save(); octx.globalAlpha=P.scan; octx.fillStyle="#000";
+    for(let y=0;y<outH;y+=P.scanGap) octx.fillRect(0,y,outW,P.scanW);
+    octx.restore();
+  }
+  if(P.grain>0){
+    const gs=P.grainSz|0, nw=Math.ceil(outW/gs), nh=Math.ceil(outH/gs);
+    if(!noiseCv){ noiseCv=document.createElement("canvas"); noiseCtx=noiseCv.getContext("2d"); }
+    if(noiseCv.width!==nw||noiseCv.height!==nh){ noiseCv.width=nw; noiseCv.height=nh; }
+    const im=noiseCtx.createImageData(nw,nh), d=im.data;
+    for(let i=0;i<nw*nh;i++){ const v=Math.random()*255|0, j=i*4; d[j]=d[j+1]=d[j+2]=v; d[j+3]=255; }
+    noiseCtx.putImageData(im,0,0);
+    octx.save(); octx.globalAlpha=P.grain*.55; octx.globalCompositeOperation="overlay";
+    octx.imageSmoothingEnabled=false; octx.drawImage(noiseCv,0,0,outW,outH); octx.restore();
+  }
+  if(P.pulse>0){
+    const p=(Math.sin(t*P.pulseHz*6.2832)*.5+.5)*P.pulse;
+    octx.save(); octx.globalCompositeOperation="lighter"; octx.globalAlpha=p*.5;
+    octx.fillStyle=P.ink; octx.fillRect(0,0,outW,outH); octx.restore();
+  }
+  if(P.vig>0){
+    const g=octx.createRadialGradient(outW/2,outH/2,Math.min(outW,outH)*.25,outW/2,outH/2,Math.hypot(outW,outH)*.6);
+    g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,`rgba(0,0,0,${P.vig})`);
+    octx.save(); octx.fillStyle=g; octx.fillRect(0,0,outW,outH); octx.restore();
+  }
+  if(P.border>0){
+    octx.save(); octx.strokeStyle=P.ink; octx.lineWidth=P.border;
+    const i=P.borderI+P.border/2;
+    octx.strokeRect(i,i,outW-i*2,outH-i*2); octx.restore();
+  }
+}
+
+/* ====================================================================== */
+/*  RENDER LOOP                                                           */
+/* ====================================================================== */
+let renderTime=0, needsRender=true, lastFrameAt=0, fpsAvg=0, lastStamp=0;
+function requestRender(){ needsRender=true; }
+
+function renderFrame(){
+  if(!srcReady) return;
+  resizeOutput();
+  renderTime = isCam ? performance.now()/1000 : video.currentTime;
+
+  switch(P.mode){
+    case "8-bit":     render8bit(); break;
+    case "lcd":       renderLcd(); break;
+    case "riso":      renderRiso(); break;
+    case "ascii":     renderAscii(); break;
+    case "halftone":  renderHalftone(); break;
+    case "stipple":   renderStipple(); break;
+    case "contour":   renderContour(); break;
+    case "threshold": renderThreshold(); break;
+    case "grayscale": renderGray(); break;
+    default:          renderDither();
+  }
+
+  compositeClean();
+  if(P.srcMix>0){
+    octx.save(); octx.globalAlpha=P.srcMix; octx.globalCompositeOperation="screen";
+    octx.filter="grayscale(1)"; drawSource(octx,outW,outH); octx.filter="none"; octx.restore();
+  }
+  applyLineSmear();
+  applyHighlightBleed();
+  overlays();
+  applyPersistence();
+  drawMaskOverlay();
+  $("#badge").textContent = `${outW}×${outH} · ${P.mode}${P.mode==="dither"?" / "+P.algo:""}`
+    + (P.xfMode!=="off" ? ` · ${P.xfMode} ${Math.round(xfProgress()*100)}%` : "");
+}
+
+/* ======================================================================
+   A / B COMPOSITING
+   The effect is rendered first; the clean frame is then laid over it with an
+   alpha mask that encodes how "wet" each pixel is. One mask covers both the
+   timed transition and the drawn blocks, so they compose naturally.
+   ====================================================================== */
+const maskCv=document.createElement("canvas"), mctx=maskCv.getContext("2d");
+const dryCv=document.createElement("canvas"), dctx=dryCv.getContext("2d");
+
+/* position through the trimmed clip, 0..1 */
+function clipPos(){
+  const a=inPoint, b=(outPoint>inPoint)?outPoint:(video.duration||1);
+  return clamp((renderTime-a)/Math.max(1e-6,b-a),0,1);
+}
+/* how far the transition has progressed at this moment, 0..1 */
+function xfProgress(){
+  const len=Math.max(.005,P.xfLen);
+  return clamp((clipPos()-P.xfStart)/len,0,1);
+}
+const smooth = t => t*t*(3-2*t);
+
+/* Paint the wet mask (opaque = effect shows). Returns false when everything is
+   wet and no compositing is needed at all. */
+function buildWetMask(){
+  const timed = P.xfMode!=="off";
+  const blocks = P.maskOn && P.maskRects.length;
+  const globalWet = timed ? 1 : P.mix;          // manual dry/wet when no transition
+  if(!timed && !blocks && globalWet>=1) return false;
+
+  if(maskCv.width!==outW||maskCv.height!==outH){ maskCv.width=outW; maskCv.height=outH; }
+  mctx.setTransform(1,0,0,1,0,0);
+  mctx.clearRect(0,0,outW,outH);
+  mctx.globalCompositeOperation="source-over";
+
+  if(!timed){
+    mctx.fillStyle=`rgba(255,255,255,${globalWet})`;
+    mctx.fillRect(0,0,outW,outH);
+  } else {
+    let t=smooth(xfProgress());
+    // "ends on clean footage" means wet runs 1 -> 0 across the transition
+    const wet = P.xfTo==="clean footage" ? 1-t : t;
+    const soft=Math.max(.001,P.xfSoft);
+    const grad=(x0,y0,x1,y1)=>{
+      const g=mctx.createLinearGradient(x0,y0,x1,y1);
+      const e0=clamp(wet-soft,0,1), e1=clamp(wet+soft,0,1);
+      g.addColorStop(0,"rgba(255,255,255,1)");
+      g.addColorStop(clamp(e0,0,.999),"rgba(255,255,255,1)");
+      g.addColorStop(clamp(Math.max(e1,e0+.001),.001,1),"rgba(255,255,255,0)");
+      g.addColorStop(1,"rgba(255,255,255,0)");
+      return g;
+    };
+    if(P.xfMode==="dissolve"){
+      mctx.fillStyle=`rgba(255,255,255,${wet})`;
+      mctx.fillRect(0,0,outW,outH);
+    } else if(P.xfMode==="wipe"){
+      const d=P.xfDir;
+      mctx.fillStyle = d==="L→R" ? grad(0,0,outW,0) : d==="R→L" ? grad(outW,0,0,0)
+                     : d==="T→B" ? grad(0,0,0,outH) : grad(0,outH,0,0);
+      mctx.fillRect(0,0,outW,outH);
+    } else if(P.xfMode==="bars"){
+      const n=Math.max(2,P.xfBars|0), vert=(P.xfDir==="L→R"||P.xfDir==="R→L");
+      const bw=(vert?outH:outW)/n;
+      for(let i=0;i<n;i++){
+        const lag=(i/(n-1||1))*P.xfStagger;
+        const lt=clamp((smooth(xfProgress())-lag)/Math.max(.001,1-P.xfStagger),0,1);
+        const bwet=P.xfTo==="clean footage" ? 1-lt : lt;
+        const e0=clamp(bwet-soft,0,1), e1=clamp(Math.max(bwet+soft,bwet-soft+.001),0,1);
+        const g = vert ? mctx.createLinearGradient(0,0,outW,0) : mctx.createLinearGradient(0,0,0,outH);
+        g.addColorStop(0,"rgba(255,255,255,1)");
+        g.addColorStop(clamp(e0,0,.999),"rgba(255,255,255,1)");
+        g.addColorStop(clamp(e1,.001,1),"rgba(255,255,255,0)");
+        g.addColorStop(1,"rgba(255,255,255,0)");
+        mctx.save();
+        if(P.xfDir==="R→L"||P.xfDir==="B→T"){
+          mctx.translate(outW/2,outH/2); mctx.rotate(Math.PI); mctx.translate(-outW/2,-outH/2);
+        }
+        mctx.fillStyle=g;
+        if(vert) mctx.fillRect(0,i*bw,outW,bw+1); else mctx.fillRect(i*bw,0,bw+1,outH);
+        mctx.restore();
+      }
+    } else {                                   // iris
+      const R=Math.hypot(outW,outH)/2;
+      const r=(P.xfIris==="open"? wet : 1-wet)*R;
+      const g=mctx.createRadialGradient(outW/2,outH/2,Math.max(0,r-soft*R),outW/2,outH/2,Math.max(.01,r+soft*R));
+      g.addColorStop(0,"rgba(255,255,255,1)");
+      g.addColorStop(1,"rgba(255,255,255,0)");
+      mctx.fillStyle=g; mctx.fillRect(0,0,outW,outH);
+      if(P.xfIris==="close"){                 // invert: wet outside the circle
+        mctx.globalCompositeOperation="xor";
+        mctx.fillStyle="#fff"; mctx.fillRect(0,0,outW,outH);
+        mctx.globalCompositeOperation="source-over";
+      }
+    }
+  }
+
+  if(blocks){
+    // restrict the wet area to the drawn blocks (or to everything outside them)
+    const bm=document.createElement("canvas"); bm.width=outW; bm.height=outH;
+    const bx=bm.getContext("2d");
+    if(P.maskInv){ bx.fillStyle="#fff"; bx.fillRect(0,0,outW,outH); bx.globalCompositeOperation="destination-out"; }
+    bx.fillStyle="#fff";
+    if(P.maskFeather>0) bx.filter=`blur(${P.maskFeather}px)`;
+    for(const r of P.maskRects){
+      const x=r.x*outW, y=r.y*outH, w=r.w*outW, h=r.h*outH, rad=Math.min(P.maskRound, w/2, h/2);
+      bx.beginPath();
+      if(bx.roundRect) bx.roundRect(x,y,w,h,rad); else bx.rect(x,y,w,h);
+      bx.fill();
+    }
+    bx.filter="none";
+    mctx.globalCompositeOperation="destination-in";
+    mctx.drawImage(bm,0,0);
+    mctx.globalCompositeOperation="source-over";
+  }
+  return true;
+}
+
+/* Lay the clean frame over the effect wherever the mask says "not wet". */
+function compositeClean(){
+  if(!buildWetMask()) return;
+  if(dryCv.width!==outW||dryCv.height!==outH){ dryCv.width=outW; dryCv.height=outH; }
+  dctx.setTransform(1,0,0,1,0,0);
+  dctx.globalCompositeOperation="source-over";
+  dctx.clearRect(0,0,outW,outH);
+  dctx.save();
+  if(P.dryLook==="mono") dctx.filter="grayscale(1)";
+  drawSource(dctx,outW,outH);
+  dctx.restore();
+  dctx.globalCompositeOperation="destination-out";   // punch out where the effect wins
+  dctx.drawImage(maskCv,0,0);
+  dctx.globalCompositeOperation="source-over";
+  octx.drawImage(dryCv,0,0);
+}
+
+/* Phosphor persistence: a decaying copy of the last frames, combined with the
+   current one. Trails brighten on dark stock and darken on light stock, so it
+   works for both a CRT look and an ink-on-paper look. */
+const persistCv=document.createElement("canvas"), pctx=persistCv.getContext("2d");
+let persistPrimed=false;
+function persistReset(){ persistPrimed=false; }
+function applyPersistence(){
+  if(P.persist<=0){ if(persistPrimed) persistReset(); return; }
+  if(persistCv.width!==outW||persistCv.height!==outH){
+    persistCv.width=outW; persistCv.height=outH; persistPrimed=false;
+  }
+  const inkLuma=(([r,g,b])=>0.2126*r+0.7152*g+0.0722*b)(hex2rgb(P.ink));
+  const paperLuma=(([r,g,b])=>0.2126*r+0.7152*g+0.0722*b)(hex2rgb(P.paper));
+  const glow = P.persistMode==="glow" ? true : P.persistMode==="ink" ? false : inkLuma>paperLuma;
+
+  if(!persistPrimed){
+    pctx.globalCompositeOperation="source-over"; pctx.globalAlpha=1;
+    pctx.drawImage(out,0,0); persistPrimed=true;
+  } else {
+    pctx.globalCompositeOperation="source-over";        // fade the trail toward stock
+    pctx.globalAlpha=1-P.persist;
+    pctx.fillStyle=P.paper; pctx.fillRect(0,0,outW,outH);
+    pctx.globalAlpha=1;
+    pctx.globalCompositeOperation= glow ? "lighten" : "darken";
+    pctx.drawImage(out,0,0);
+  }
+  octx.save();
+  octx.globalCompositeOperation= glow ? "lighten" : "darken";
+  octx.drawImage(persistCv,0,0);
+  octx.restore();
+}
+
+function loop(now){
+  requestAnimationFrame(loop);
+  if(!srcReady || recording) return;   // while recording the pump drives rendering
+  const fps=parseFloat(P.fps)||24, interval=1000/fps;
+  const live = playing || isCam;
+  if(live && now-lastFrameAt >= interval){   // hold the preview at the target frame rate
+    lastFrameAt=now; needsRender=true;
+  }
+  if(!needsRender) return;
+  needsRender=false;
+  renderFrame();
+  if(lastStamp){ const d=now-lastStamp; fpsAvg=fpsAvg?fpsAvg*.9+(1000/d)*.1:1000/d; }
+  lastStamp=now;
+  $("#fpsread").textContent = (fpsAvg?fpsAvg.toFixed(0):"—")+" fps render";
+  updateTimeUI();
+
+  if(playing && !isCam){
+    if(video.currentTime>=outPoint-0.001 || video.ended){
+      if($("#loopChk").checked){ video.currentTime=inPoint; }
+      else pause();
+    }
+  }
+}
+
+/* Rendering during a recording is driven by an explicit timer rather than rAF:
+   requestAnimationFrame is throttled when the tab loses focus, which would drop
+   frames out of the captured stream. */
+let pump=null;
+function startPump(fps){
+  stopPump();
+  pump=setInterval(()=>{
+    renderFrame(); updateTimeUI();
+    if(!isCam && (video.currentTime>=(P.xTrim?outPoint:video.duration)-0.001 || video.ended)) stopRecording();
+  }, 1000/fps);
+}
+function stopPump(){ if(pump) clearInterval(pump); pump=null; }
+requestAnimationFrame(loop);
+video.addEventListener("seeked",requestRender);
+video.addEventListener("loadeddata",requestRender);
+
+/* ====================================================================== */
+/*  EXPORT                                                                */
+/* ====================================================================== */
+function stamp(){ const d=new Date(); return d.toISOString().replace(/[:T]/g,"-").slice(0,19); }
+function download(blob,name){
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),8000);
+}
+$("#btnPng").onclick=()=>{ if(!srcReady) return; renderFrame(); out.toBlob(b=>download(b,`asciivd_${stamp()}.png`),"image/png"); };
+
+let recorder=null, recording=false, recChunks=[], recStream=null, recStart=0, recTimer=null, warnedMp4=false;
+const MP4_MIMES=["video/mp4;codecs=avc1.4d002a,mp4a.40.2","video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+                 "video/mp4;codecs=avc1,mp4a.40.2","video/mp4;codecs=avc1","video/mp4"];
+const WEBM_MIMES=["video/webm;codecs=vp9,opus","video/webm;codecs=vp9","video/webm;codecs=vp8,opus",
+                  "video/webm;codecs=vp8","video/webm"];
+function pickMime(){
+  const wantMp4 = P.xFormat.startsWith("mp4");
+  const list = wantMp4 ? MP4_MIMES.concat(WEBM_MIMES) : WEBM_MIMES.concat(MP4_MIMES);
+  return list.find(m=>MediaRecorder.isTypeSupported(m))||"";
+}
+function extFor(mime){ return mime.includes("mp4")?"mp4":"webm"; }
+async function startRecording(){
+  if(!srcReady) return;
+  const fps=parseFloat(P.xFps)||30;
+  recStream = out.captureStream(fps);
+  if(P.xAudio && !isCam && video.captureStream){
+    try{
+      video.muted=false; video.volume=1;
+      const vs=video.captureStream();
+      vs.getAudioTracks().forEach(t=>recStream.addTrack(t));
+    }catch(e){ console.warn("audio capture failed",e); }
+  }
+  const mime=pickMime();
+  if(P.xFormat.startsWith("mp4") && !mime.includes("mp4") && !warnedMp4){
+    warnedMp4=true;
+    alert("This browser's recorder can't write MP4 — falling back to WebM for the live recording.\n\nUse “Export MP4” instead: it encodes H.264 with WebCodecs and is frame-accurate.");
+  }
+  recChunks=[];
+  recorder=new MediaRecorder(recStream,{mimeType:mime,videoBitsPerSecond:P.xMbps*1e6});
+  recorder.ondataavailable=e=>{ if(e.data.size) recChunks.push(e.data); };
+  recorder.onstop=()=>{
+    const blob=new Blob(recChunks,{type:recorder.mimeType.split(";")[0]});
+    download(blob, `asciivd_${stamp()}.${extFor(recorder.mimeType)}`);
+    video.muted=true;
+  };
+  if(!isCam) await seekTo(P.xTrim?inPoint:0);
+  recorder.start(200);
+  recording=true; recStart=performance.now();
+  startPump(fps);
+  $("#btnRec").classList.add("armed"); $("#btnRec").textContent="■ Stop";
+  $("#recdot").classList.add("on");
+  recTimer=setInterval(()=>{ $("#rectime").textContent="REC "+((performance.now()-recStart)/1000).toFixed(1)+"s"; },100);
+  if(!isCam) play();
+}
+function stopRecording(){
+  if(!recording) return;
+  recording=false; clearInterval(recTimer); stopPump();
+  try{ recorder.stop(); }catch(e){}
+  recStream.getTracks().forEach(t=>{ if(t.kind==="video") t.stop(); });
+  pause();
+  $("#btnRec").classList.remove("armed"); $("#btnRec").textContent="● Record";
+  $("#recdot").classList.remove("on");
+}
+$("#btnRec").onclick=()=>recording?stopRecording():startRecording();
+const once=(el,ev)=>new Promise(r=>el.addEventListener(ev,r,{once:true}));
+/* Resolve once the element has actually presented a frame. "seeked" only says the
+   seek landed — the picture can still be stale (or absent) when we grab it, which
+   is what produced blank frames in exports. */
+function framePresented(cap=60){
+  return new Promise(res=>{
+    let done=false; const fin=()=>{ if(!done){ done=true; res(); } };
+    if(video.requestVideoFrameCallback) video.requestVideoFrameCallback(()=>fin());
+    else requestAnimationFrame(()=>requestAnimationFrame(fin));
+    setTimeout(fin,cap);
+  });
+}
+/* seek and wait — resolves immediately when already there, and never hangs */
+async function seekTo(t){
+  t=clamp(t,0,Math.max(0,(video.duration||0)-0.0005));
+  if(Math.abs(video.currentTime-t)>=1e-4){
+    video.currentTime=t;
+    await Promise.race([once(video,"seeked"), new Promise(r=>setTimeout(r,3000))]);
+  }
+  await framePresented();
+}
+
+/* Render one frame for export. A frame that is empty, or identical to the one
+   before it, means the grab beat the decoder — wait for a presentation and retry
+   rather than writing a blank or a duplicate into the file. */
+let lastSig=null;
+async function renderForExport(){
+  // An empty frame is always wrong, so it is worth waiting on repeatedly. A frame
+  // identical to the one before is usually legitimate — a still shot, or a source
+  // slower than the export rate — so it gets one short retry and is then accepted,
+  // otherwise every repeated frame would cost three render passes.
+  for(let attempt=0;attempt<3;attempt++){
+    renderFrame();
+    if(!lumaFlat && lumaSig!==lastSig){ lastSig=lumaSig; return true; }
+    if(!lumaFlat){                       // duplicate, not blank
+      if(attempt>0) break;
+      await framePresented(90);
+      continue;
+    }
+    await framePresented(220);
+  }
+  renderFrame();
+  lastSig=lumaSig;
+  return !lumaFlat;          // a genuine static shot is fine; an empty one is not
+}
+
+/* Time displacement and persistence build up over consecutive frames, so an
+   export must not start cold — run the frames leading up to the in point
+   through the pipeline first, without writing them anywhere. */
+async function prerollTemporal(startTime,fps){
+  const needs = P.tdMode!=="off" || P.persist>0;
+  if(!needs) return;
+  ringReset(); persistReset();
+  const frames=Math.min(60, P.tdMode!=="off" ? (P.tdDepth|0)+1 : 12);
+  for(let k=frames;k>0;k--){
+    const t=startTime-k/fps;
+    if(t<0) continue;
+    await seekTo(t);
+    renderFrame();
+  }
+}
+
+/* ----------------------------------------------------------------------
+   Export jobs. Only one runs at a time, and its own button becomes the stop
+   control while it does — clicking it (or pressing Esc) cancels at the next
+   frame boundary. Work already written to disk is kept.
+   ---------------------------------------------------------------------- */
+let exportJob=null;
+function startJob(kind,btn){
+  exportJob={kind, cancel:false, btn, label:btn.textContent};
+  btn.classList.add("armed");
+  ["#btnRec","#btnMp4","#btnSeq","#btnPng"].map($).forEach(b=>{ if(b!==btn) b.disabled=true; });
+  return exportJob;
+}
+function endJob(){
+  if(!exportJob) return;
+  const {btn,label}=exportJob;
+  btn.classList.remove("armed"); btn.textContent=label; btn.disabled=false;
+  ["#btnRec","#btnMp4","#btnSeq","#btnPng"].map($).forEach(b=>b.disabled=false);
+  exportJob=null;
+}
+function jobProgress(text){ if(exportJob) exportJob.btn.textContent="■ Stop · "+text; }
+function cancelExport(){
+  if(exportJob){ exportJob.cancel=true; exportJob.btn.textContent="■ stopping…"; return true; }
+  if(recording){ stopRecording(); return true; }
+  return false;
+}
+
+/* frame-accurate PNG sequence (Chrome / Edge: File System Access API) */
+$("#btnSeq").onclick=async ()=>{
+  // clicking the running job's own button stops it; other buttons are disabled anyway
+  if(exportJob){ if(exportJob.btn===$("#btnSeq")) cancelExport(); return; }
+  if(!srcReady||isCam) return alert("Load a video file first.");
+  if(!window.showDirectoryPicker) return alert("PNG sequence export needs Chrome or Edge (File System Access API).\nUse “Record” or “Export MP4” instead.");
+  let dir; try{ dir=await window.showDirectoryPicker({mode:"readwrite"}); }catch(e){ return; }
+  const fps=parseFloat(P.xFps)||30, step=(P.seqStep|0)/fps;
+  const a=P.xTrim?inPoint:0, b=P.xTrim?outPoint:video.duration;
+  const total=Math.max(1,Math.floor((b-a)/step));
+  pause(); lastSig=null;
+  const job=startJob("png",$("#btnSeq"));
+  await prerollTemporal(a,fps);
+  let written=0;
+  try{
+    for(let i=0;i<total;i++){
+      if(job.cancel) break;
+      await seekTo(a+i*step);
+      await renderForExport();
+      if(job.cancel) break;                            // do not write a frame mid-stop
+      const blob=await new Promise(r=>out.toBlob(r,"image/png"));
+      const fh=await dir.getFileHandle(`frame_${String(i).padStart(5,"0")}.png`,{create:true});
+      const ws=await fh.createWritable(); await ws.write(blob); await ws.close();
+      written=i+1;
+      jobProgress(`${written}/${total}`);
+      if(i%4===0) await new Promise(r=>setTimeout(r));  // keep the click responsive
+    }
+  }catch(e){
+    alert("PNG sequence stopped: "+e.message+`\n${written} frames were written.`);
+  }finally{
+    const cancelled=job.cancel;
+    endJob();
+    if(cancelled) alert(`Stopped. ${written} of ${total} frames written — the files already saved are intact.`);
+    else if(written) alert(`Wrote ${written} frames.`);
+  }
+};
+
+/* ======================================================================
+   MP4 MUXER
+   Minimal progressive (non-fragmented) ISO-BMFF writer: ftyp + mdat + moov,
+   one chunk per track. Enough for H.264 video plus optional AAC audio, which
+   is what WebCodecs hands us. Written out longhand because no library can be
+   loaded — the tool has to stay a single offline file.
+   ====================================================================== */
+const MP4 = (()=>{
+  const cat = arrs=>{
+    let n=0; for(const a of arrs) n+=a.length;
+    const o=new Uint8Array(n); let p=0;
+    for(const a of arrs){ o.set(a,p); p+=a.length; }
+    return o;
+  };
+  const u8  = a=>new Uint8Array(a);
+  const u16 = v=>u8([v>>8&255, v&255]);
+  const u32 = v=>u8([v>>>24&255, v>>>16&255, v>>>8&255, v&255]);
+  const s4  = t=>u8([...t].map(c=>c.charCodeAt(0)));
+  function box(type,...parts){
+    const body=cat(parts);
+    return cat([u32(body.length+8), s4(type), body]);
+  }
+  const fbox=(type,ver,flags,...parts)=>box(type, u8([ver, flags>>16&255, flags>>8&255, flags&255]), ...parts);
+  const MATRIX = cat([u32(0x10000),u32(0),u32(0),u32(0),u32(0x10000),u32(0),u32(0),u32(0),u32(0x40000000)]);
+
+  /* run-length encode sample durations into an stts table */
+  function stts(samples){
+    const runs=[];
+    for(const smp of samples){
+      const last=runs[runs.length-1];
+      if(last && last[1]===smp.duration) last[0]++;
+      else runs.push([1,smp.duration]);
+    }
+    return fbox("stts",0,0,u32(runs.length),...runs.map(r=>cat([u32(r[0]),u32(r[1])])));
+  }
+  /* composition offsets — required when the encoder emits B-frames, i.e. when
+     decode order differs from presentation order */
+  function ctts(samples){
+    let dts=0; const runs=[];
+    for(const smp of samples){
+      const off = smp.cts===undefined ? 0 : Math.round(smp.cts-dts);
+      dts += smp.duration;
+      const last=runs[runs.length-1];
+      if(last && last[1]===off) last[0]++; else runs.push([1,off]);
+    }
+    if(runs.length===1 && runs[0][1]===0) return null;
+    return fbox("ctts",1,0,u32(runs.length),...runs.map(r=>cat([u32(r[0]),u32(r[1])])));  // u32() emits two's complement
+  }
+  function stss(samples){
+    const keys=[];
+    samples.forEach((smp,i)=>{ if(smp.sync) keys.push(i+1); });
+    if(keys.length===samples.length) return null;         // all sync → box omitted
+    return fbox("stss",0,0,u32(keys.length),...keys.map(u32));
+  }
+  const stsz = samples => fbox("stsz",0,0,u32(0),u32(samples.length),...samples.map(s=>u32(s.data.length)));
+  const stsc = n => fbox("stsc",0,0,u32(1),cat([u32(1),u32(n),u32(1)]));
+  const stco = off => fbox("stco",0,0,u32(1),u32(off));
+  const dinf = ()=>box("dinf", fbox("dref",0,0,u32(1), fbox("url ",0,1)));
+
+  function avc1(t){
+    return box("avc1",
+      u8([0,0,0,0,0,0]), u16(1),                    // reserved + data reference index
+      u16(0), u16(0), u32(0),u32(0),u32(0),
+      u16(t.width), u16(t.height),
+      u32(0x00480000), u32(0x00480000), u32(0),
+      u16(1),                                        // frame count
+      cat([u8([7]), s4("ASCIIVD"), new Uint8Array(24)]),  // compressor name (32 bytes)
+      u16(0x0018), u16(0xFFFF),
+      box("avcC", t.avcC));
+  }
+  /* ES descriptor tree for AAC — all descriptor bodies here are < 128 bytes,
+     so single-byte lengths are always valid. */
+  function esds(t){
+    const asc=t.asc;
+    const dsi = cat([u8([0x05, asc.length]), asc]);
+    const dcd = cat([u8([0x04, 13+dsi.length, 0x40, 0x15]), u8([0,0,0]),
+                     u32(0), u32(t.bitrate||128000), dsi]);
+    const sl  = u8([0x06,1,0x02]);
+    const es  = cat([u8([0x03, 3+dcd.length+sl.length]), u16(1), u8([0]), dcd, sl]);
+    return fbox("esds",0,0,es);
+  }
+  function mp4a(t){
+    return box("mp4a",
+      u8([0,0,0,0,0,0]), u16(1),
+      u32(0), u32(0),
+      u16(t.channels), u16(16), u16(0), u16(0),
+      u32(t.timescale<<16 >>> 0 || t.timescale*65536),
+      esds(t));
+  }
+
+  function trak(t, id, movieDurMs, chunkOffset){
+    const durTs = t.samples.reduce((a,s)=>a+s.duration,0);
+    const durMs = Math.round(durTs/t.timescale*1000);
+    const video = t.type==="video";
+    const stblParts=[
+      fbox("stsd",0,0,u32(1), video?avc1(t):mp4a(t)),
+      stts(t.samples),
+      video ? ctts(t.samples) : null,
+      video ? stss(t.samples) : null,
+      stsc(t.samples.length),
+      stsz(t.samples),
+      stco(chunkOffset)
+    ].filter(Boolean);
+    return box("trak",
+      fbox("tkhd",0,3, u32(0),u32(0),u32(id),u32(0),u32(durMs),
+        u32(0),u32(0), u16(0), u16(0), u16(video?0:0x0100), u16(0), MATRIX,
+        u32((video?t.width:0)<<16), u32((video?t.height:0)<<16)),
+      box("mdia",
+        fbox("mdhd",0,0, u32(0),u32(0), u32(t.timescale), u32(durTs), u16(0x55C4), u16(0)),
+        fbox("hdlr",0,0, u32(0), s4(video?"vide":"soun"), u32(0),u32(0),u32(0),
+             cat([s4(video?"VideoHandler":"SoundHandler"), u8([0])])),
+        box("minf",
+          video ? fbox("vmhd",0,1,u16(0),u16(0),u16(0),u16(0)) : fbox("smhd",0,0,u16(0),u16(0)),
+          dinf(),
+          box("stbl",...stblParts))));
+  }
+
+  /* tracks: [{type:"video",timescale,width,height,avcC,samples},
+              {type:"audio",timescale,channels,bitrate,asc,samples}] */
+  function build(tracks){
+    const ftyp = box("ftyp", s4("isom"), u32(0x200), s4("isom"), s4("iso2"), s4("avc1"), s4("mp41"));
+    const payload = cat(tracks.map(t=>cat(t.samples.map(s=>s.data))));
+    const mdatStart = ftyp.length + 8;
+    if(mdatStart + payload.length > 0xFFFFFFF0) throw new Error("clip too large for a 32-bit MP4 — use the PNG sequence");
+    const mdat = cat([u32(payload.length+8), s4("mdat"), payload]);
+
+    let off = mdatStart, durMs = 0;
+    const offsets = tracks.map(t=>{
+      const o=off; off += t.samples.reduce((a,s)=>a+s.data.length,0);
+      durMs = Math.max(durMs, Math.round(t.samples.reduce((a,s)=>a+s.duration,0)/t.timescale*1000));
+      return o;
+    });
+    const moov = box("moov",
+      fbox("mvhd",0,0, u32(0),u32(0), u32(1000), u32(durMs), u32(0x10000), u16(0x0100),
+           u16(0), u32(0),u32(0), MATRIX, ...Array(6).fill(u32(0)), u32(tracks.length+1)),
+      ...tracks.map((t,i)=>trak(t, i+1, durMs, offsets[i])));
+    return new Blob([ftyp, mdat, moov], {type:"video/mp4"});
+  }
+  return {build};
+})();
+
+/* ======================================================================
+   FRAME-ACCURATE MP4 EXPORT (WebCodecs)
+   Seeks the source frame by frame, so the render never has to keep up with
+   real time — nothing is dropped however heavy the effect is.
+   ====================================================================== */
+function h264Codecs(w,h){
+  const px=w*h;
+  const level = px<=1280*720 ? 0x1f : px<=1920*1088 ? 0x2a : px<=2560*1440 ? 0x32 : 0x34;
+  const lv = level.toString(16).padStart(2,"0");
+  const byProfile = {high:["6400"], main:["4d40"], baseline:["42e0"]};
+  const order = [...(byProfile[P.xProfile]||byProfile.high), "4d40", "42e0", "6400"];
+  const out=[];
+  for(const pre of order){ for(const l of [lv,"34","33","2a","1f"]) out.push("avc1."+pre+l); }
+  return [...new Set(out)];
+}
+
+async function encodeAudioTrack(a,b){
+  if(!currentFile || !window.AudioEncoder) return null;
+  const actx = new AudioContext();
+  const buf = await actx.decodeAudioData(await currentFile.arrayBuffer()).finally(()=>actx.close());
+  const rate = buf.sampleRate, ch = Math.min(2, buf.numberOfChannels);
+  const start = Math.floor(a*rate), end = Math.min(buf.length, Math.ceil(b*rate));
+  if(end<=start) return null;
+  const planes=[]; for(let c=0;c<ch;c++) planes.push(buf.getChannelData(c));
+
+  const BLK=1024;
+  const samples=[]; let asc=null;
+  const enc = new AudioEncoder({
+    output:(chunk,md)=>{
+      if(md && md.decoderConfig && md.decoderConfig.description && !asc)
+        asc = new Uint8Array(md.decoderConfig.description);
+      const d=new Uint8Array(chunk.byteLength); chunk.copyTo(d);
+      const dur = chunk.duration ? Math.round(chunk.duration*rate/1e6) : BLK;
+      samples.push({data:d, duration:dur||BLK, sync:true});
+    },
+    error:e=>console.warn("audio encoder",e)
+  });
+  enc.configure({codec:"mp4a.40.2", sampleRate:rate, numberOfChannels:ch, bitrate:192000});
+
+  for(let i=start;i<end;i+=BLK){
+    const n=Math.min(BLK,end-i);
+    const data=new Float32Array(ch*BLK);
+    for(let c=0;c<ch;c++) data.set(planes[c].subarray(i,i+n), c*BLK);
+    enc.encode(new AudioData({format:"f32-planar", sampleRate:rate, numberOfFrames:BLK,
+      numberOfChannels:ch, timestamp:Math.round((i-start)/rate*1e6), data}));
+    if(enc.encodeQueueSize>32) await new Promise(r=>setTimeout(r));
+  }
+  await enc.flush(); enc.close();
+  if(!asc || !samples.length) return null;
+  return {type:"audio", timescale:rate, channels:ch, bitrate:192000, asc, samples};
+}
+
+async function exportMp4(){
+  if(exportJob){ if(exportJob.btn===$("#btnMp4")) cancelExport(); return; }
+  if(!srcReady||isCam) return alert("Load a video file first — MP4 export needs a seekable source.");
+  if(!window.VideoEncoder) return alert("This browser has no WebCodecs support.\nUse “Record” (real-time) instead, or Chrome/Edge for frame-accurate MP4.");
+  resizeOutput();
+
+  const fps=parseFloat(P.xFps)||30;
+  const a = P.xTrim?inPoint:0;
+  const b = P.xTrim?outPoint:(video.duration||0);
+  const total = Math.max(1, Math.round((b-a)*fps));
+  const timescale = 90000, delta = Math.round(timescale/fps);
+
+  let cfg=null;
+  for(const codec of h264Codecs(outW,outH)){
+    const c={codec, width:outW, height:outH, bitrate:P.xMbps*1e6, framerate:fps, avc:{format:"avc"}, latencyMode:"quality"};
+    try{ if((await VideoEncoder.isConfigSupported(c)).supported){ cfg=c; break; } }catch(e){}
+  }
+  if(!cfg) return alert("No supported H.264 encoder configuration for this resolution.\nTry a smaller output width, or record WebM.");
+
+  const btn=$("#btnMp4");
+  const samples=[]; let avcC=null, failed=null, blanks=0;
+  const enc = new VideoEncoder({
+    output:(chunk,md)=>{
+      if(md && md.decoderConfig && md.decoderConfig.description && !avcC)
+        avcC = new Uint8Array(md.decoderConfig.description);
+      const d=new Uint8Array(chunk.byteLength); chunk.copyTo(d);
+      samples.push({data:d, duration:delta, sync:chunk.type==="key",
+                    cts:Math.round((chunk.timestamp||0)*timescale/1e6)});
+    },
+    error:e=>{ failed=e; }
+  });
+  enc.configure(cfg);
+
+  lastSig=null; pause();
+  const job=startJob("mp4",btn);
+  const wasMuted=video.muted; video.muted=true;
+  await prerollTemporal(a,fps);
+  try{
+    for(let i=0;i<total && !job.cancel && !failed;i++){
+      await seekTo(a + i/fps);
+      if(!await renderForExport()) blanks++;
+      // Snapshot through an ImageBitmap: constructing a VideoFrame straight from a
+      // live canvas can hand the encoder the canvas as it is when the encode runs,
+      // not as it was here — which shows up as partial or empty frames.
+      const bmp = await createImageBitmap(out);
+      const frame = new VideoFrame(bmp, {timestamp: Math.round(i/fps*1e6), duration: Math.round(1e6/fps)});
+      enc.encode(frame, {keyFrame: i % Math.round(fps*2) === 0});
+      frame.close(); bmp.close();
+      jobProgress(`${i+1}/${total} · ${Math.round((i+1)/total*100)}%`);
+      if(enc.encodeQueueSize>6) await new Promise(r=>setTimeout(r));
+      else if(i%8===0) await new Promise(r=>setTimeout(r));
+    }
+    await enc.flush();
+    if(failed) throw failed;
+    const stopped=job.cancel;
+    if(!samples.length){
+      enc.close();
+      if(stopped) return;                              // stopped before anything was encoded
+      throw new Error("encoder produced no frames");
+    }
+
+    const tracks=[{type:"video", timescale, width:outW, height:outH, avcC, samples}];
+    let audioNote="";
+    if(P.xAudio && !stopped){
+      jobProgress("audio…");
+      try{
+        const at = await encodeAudioTrack(a,b);
+        if(at) tracks.push(at); else audioNote=" (no audio track — source has none, or AAC encoding is unavailable)";
+      }catch(e){ console.warn(e); audioNote=" (audio skipped: "+e.message+")"; }
+    }
+    jobProgress("muxing…");
+    const name = stopped ? `asciivd_${stamp()}_partial.mp4` : `asciivd_${stamp()}.mp4`;
+    download(MP4.build(tracks), name);
+    if(stopped) audioNote = ` — stopped at ${samples.length} of ${total} frames, saved as a partial clip`+audioNote;
+    if(blanks) audioNote += ` — ${blanks} of ${total} frames came back empty from the decoder; try a different source format or Chrome`;
+    if(audioNote) setTimeout(()=>alert("MP4 written"+audioNote),300);
+    enc.close();
+  }catch(e){
+    alert("MP4 export failed: "+e.message+"\nTry “Record” instead, or the PNG sequence.");
+    try{ enc.close(); }catch(_){}
+  }finally{
+    video.muted=wasMuted;
+    endJob();
+  }
+}
+$("#btnMp4").onclick=exportMp4;
+
+/* ====================================================================== */
+/*  PRESETS                                                               */
+/* ====================================================================== */
+const BUILTIN = {
+  "marathon":     {mode:"dither",algo:"atkinson",scale:4,contr:.35,gamma:1.05,dThresh:.5,dAmt:1,grain:.14,ink:"#ffffff",paper:"#000000",fps:"24"},
+  "marathon soft":{mode:"dither",algo:"floyd-steinberg",scale:3,dLevels:3,contr:.2,gamma:1.15,grain:.08,glow:.12},
+  "newsprint":    {mode:"halftone",htShape:"dot",htCell:8,htAngle:45,htGain:1.08,contr:.25,ink:"#111111",paper:"#efece2",grain:.1},
+  "terminal":     {mode:"ascii",charset:"shades 10",cols:150,cellAR:1.9,fScale:1.02,ink:"#c8ffb0",paper:"#050805",contr:.3,scan:.18,scanGap:3,glow:.25},
+  "xerox":        {mode:"dither",algo:"blue noise",scale:2,contr:.55,gamma:.85,grain:.3,grainSz:1,ink:"#0d0d0d",paper:"#f2f0ea"},
+  "blueprint":    {mode:"contour",ctLevels:11,ctWidth:1,ctFill:.12,scale:2,blur:1,contr:.2,ink:"#bcd9ff",paper:"#08182c"},
+  "topographic":  {mode:"contour",ctLevels:22,ctWidth:1,ctFill:0,scale:2,blur:2,contr:.3},
+  "ghost wave":   {mode:"dither",algo:"bayer 8×8",scale:5,wAmp:14,wLen:90,wSpd:.8,wAxis:"horizontal",contr:.3,glow:.2},
+  "crt":          {mode:"ascii",charset:"blocks",cols:96,fScale:1.12,scan:.35,scanGap:4,scanW:2,glow:.4,vig:.45,ink:"#eaeaea",paper:"#000000"},
+  "silk":         {mode:"dither",algo:"jarvis",dLevels:4,scale:2,contr:.1,sharp:.4},
+  "stamp":        {mode:"halftone",htShape:"line",htCell:7,htAngle:22,htGain:1.15,contr:.4,ink:"#ffffff",paper:"#000000"},
+  "ripple":       {mode:"halftone",htShape:"dot",htCell:10,htAngle:0,rAmp:16,rLen:70,rSpd:1.4,contr:.3},
+  "edge code":    {mode:"ascii",charset:"tech",cols:140,aEdge:true,aEdgeT:.45,edge:.25,contr:.25,ink:"#ffffff",paper:"#0a0a0a"},
+  "glitch tape":  {mode:"dither",algo:"burkes",scale:3,jAmp:22,jSize:12,jRate:9,grain:.2,scan:.15,contr:.35},
+  "duotone type": {mode:"ascii",charset:"marathon",cols:120,aColor:"duotone",tint:"#ff5b1f",ink:"#ffffff",paper:"#0b0b0c",contr:.28},
+  "photo copy":   {mode:"threshold",scale:1,dThresh:.52,contr:.45,sharp:.6,grain:.12},
+  "riso 3-colour":{mode:"riso",rzSep:"colour",rzSet:"pink · blue · yellow",rzInk1:"#ff48b0",rzInk2:"#0078bf",rzInk3:"#ffe800",
+                   algo:"floyd-steinberg",scale:3,rzOffset:5,rzAlpha:.88,contr:.2,paper:"#f4f1e8",grain:.08},
+  "riso poster":  {mode:"riso",rzSep:"tonal build",rzSet:"pink · blue · yellow",rzInk1:"#ff48b0",rzInk2:"#0078bf",rzInk3:"#ffe800",
+                   algo:"bayer 8×8",scale:4,rzOffset:8,rzAlpha:.9,contr:.35,paper:"#f4f1e8"},
+  "riso duotone": {mode:"riso",rzSep:"tonal build",rzInks:2,rzSet:"custom",rzInk1:"#0078bf",rzInk2:"#ff48b0",
+                   algo:"atkinson",scale:3,rzOffset:9,rzAngle:0,rzAlpha:.85,contr:.3,paper:"#f4f1e8"},
+  "game boy":     {mode:"8-bit",pxPal:"game boy",scale:5,pxDither:"bayer 4×4",pxAmt:.8,contr:.25,sat:1.1},
+  "virtual boy":  {mode:"8-bit",pxPal:"virtual boy",scale:5,pxDither:"bayer 4×4",pxAmt:.85,
+                   contr:.35,gamma:1.1,glow:.3,vig:.4},
+  "datamosh bleed":{mode:"8-bit",pxPal:"auto (from frame)",pxAuto:32,scale:2,pxDither:"bayer 4×4",pxAmt:.5,sat:1.2,contr:.2,
+                   smOn:true,smearLines:[{o:"v",x:.72,y0:0,y1:1}],smDir:"right / down",smLen:1,smJitter:.5,
+                   smBand:3,smWobble:2,smDecay:.35,smRate:8,scan:.18,scanGap:3},
+  "scorched highlights":{mode:"8-bit",pxPal:"auto (from frame)",pxAuto:32,scale:2,pxDither:"bayer 4×4",pxAmt:.4,sat:1.3,contr:.3,
+                   hbAmt:.9,hbThresh:.72,hbSoft:.15,hbLen:.4,hbDir:"right",hbColor:"source colour",hbFlicker:.35,
+                   hbRate:8,hbRes:3,hbBlend:"add",glow:.25,scan:.15,scanGap:3},
+  "mosh + scorch":{mode:"dither",algo:"atkinson",scale:3,contr:.35,
+                   smOn:true,smearLines:[{o:"v",x:.6,y0:.1,y1:.9}],smJitter:.6,smBand:4,smDecay:.5,smRate:6,
+                   hbAmt:.8,hbThresh:.7,hbColor:"tint",hbTint:"#ffb238",hbLen:.5,hbBlend:"add",glow:.2},
+  "nokia 3310":   {mode:"lcd",lcdSet:"3310 green",lcdScreen:"#7ba84d",lcdInk:"#141a0e",lcdGlowCol:"#cfdc6e",
+                   lcdCell:12,lcdGap:.18,lcdDither:"atkinson",lcdThresh:.5,contr:.35,
+                   lcdShadow:.55,lcdShX:.16,lcdShY:.26,lcdShBlur:.22,lcdGlow:.45,lcdTexture:.35,lcdGhost:.03},
+  "nokia snake":  {mode:"lcd",lcdSet:"5110 lime",lcdScreen:"#9ec35a",lcdInk:"#1b2412",lcdGlowCol:"#e2ec8c",
+                   lcdCell:18,lcdGap:.2,lcdDither:"threshold",lcdThresh:.5,contr:.5,
+                   lcdShadow:.6,lcdShX:.18,lcdShY:.28,lcdShBlur:.2,lcdGlow:.35,lcdTexture:.4,lcdGhost:.06},
+  "nokia blue":   {mode:"lcd",lcdSet:"blue backlight",lcdScreen:"#5f9fd6",lcdInk:"#0c1a2a",lcdGlowCol:"#a9d6ff",
+                   lcdCell:10,lcdGap:.16,lcdDither:"bayer 4×4",lcdThresh:.5,contr:.3,
+                   lcdShadow:.5,lcdShX:.15,lcdShY:.24,lcdShBlur:.25,lcdGlow:.5,lcdTexture:.3,lcdGhost:.04},
+  "nes":          {mode:"8-bit",pxPal:"nes",scale:4,pxDither:"floyd-steinberg",pxAmt:.6,contr:.2,sat:1.25,pxOutline:.25},
+  "c64 demo":     {mode:"8-bit",pxPal:"c64",scale:6,pxDither:"bayer 8×8",pxAmt:.85,contr:.3,sat:1.3},
+  "spectrum clash":{mode:"8-bit",pxPal:"zx spectrum",scale:5,pxDither:"bayer 4×4",pxAmt:.9,
+                   pxClash:true,pxCell:8,contr:.35,sat:1.4},
+  "pico-8":       {mode:"8-bit",pxPal:"pico-8",scale:5,pxDither:"atkinson",pxAmt:.7,contr:.25,sat:1.2},
+  "cga dos":      {mode:"8-bit",pxPal:"cga 1 (cyan/magenta)",scale:5,pxDither:"bayer 8×8",pxAmt:1,contr:.35,sat:1.3},
+  "auto 16":      {mode:"8-bit",pxPal:"auto (from frame)",pxAuto:16,scale:4,pxDither:"floyd-steinberg",pxAmt:.65,contr:.2},
+  "a/b reveal":   {mode:"dither",algo:"atkinson",scale:4,contr:.35,grain:.12,
+                   xfMode:"wipe",xfDir:"L→R",xfTo:"clean footage",xfStart:.35,xfLen:.3,xfSoft:.06},
+  "a/b bars":     {mode:"dither",algo:"bayer 8×8",scale:5,contr:.3,
+                   xfMode:"bars",xfDir:"T→B",xfBars:12,xfStagger:.7,xfTo:"clean footage",xfStart:.3,xfLen:.4,xfSoft:.05},
+  "slit scan":    {mode:"dither",algo:"atkinson",scale:3,contr:.3,tdMode:"rows",tdDepth:30,tdMix:1,grain:.08},
+  "time smear":   {mode:"dither",algo:"blue noise",scale:3,contr:.25,tdMode:"luma",tdDepth:24,tdMix:.9,persist:.4},
+  "phosphor trails":{mode:"dither",algo:"floyd-steinberg",scale:3,contr:.3,persist:.9,persistMode:"glow",
+                   ink:"#33ff33",paper:"#021206",glow:.35,scan:.22,scanGap:3,vig:.3},
+  "stipple ink":  {mode:"stipple",stipGrid:2,stipDens:1.15,stipSize:.9,stipJit:.8,stipVary:.5,
+                   contr:.3,ink:"#141210",paper:"#efe9dc",fibre:.35},
+  "typeset":      {mode:"ascii",charset:"classic 70",cols:150,aMatch:true,aMatchW:.8,contr:.28,
+                   ink:"#14110d",paper:"#efe9dc"},
+  "riso press":   {mode:"riso",rzSep:"tonal build",rzSet:"pink · blue · yellow",rzInk1:"#ff48b0",rzInk2:"#0078bf",rzInk3:"#ffe800",
+                   algo:"bayer 8×8",scale:4,rzOffset:6,rzWobble:3.5,rzWobRate:1.2,rzAlpha:.88,
+                   bleed:.45,fibre:.4,contr:.3,paper:"#f4f1e8"},
+  "riso ghost":   {mode:"riso",rzSep:"mono offset",rzSet:"orange · purple · teal",rzInk1:"#ff6c2f",rzInk2:"#765ba7",rzInk3:"#00838a",
+                   algo:"blue noise",scale:3,rzOffset:14,rzAlpha:.6,rzDensity:.75,contr:.25,paper:"#f4f1e8"}
+};
+
+const SCENE_KEYS=["maskRects","maskOn","maskInv","maskFeather","maskRound","smearLines","smOn"];
+function applyPreset(obj,resetFirst=true){
+  // Blocks are drawn against this particular footage, so a look change keeps them
+  // unless the preset being loaded carries its own.
+  const scene={}; SCENE_KEYS.forEach(k=>{ if(!(k in obj)) scene[k]=P[k]; });
+  // lines you have drawn win over a preset's demo line
+  const keepLines = Array.isArray(P.smearLines)&&P.smearLines.length ? JSON.parse(JSON.stringify(P.smearLines)) : null;
+  if(resetFirst) Object.assign(P,JSON.parse(JSON.stringify(DEFAULTS)));
+  Object.assign(P,scene);
+  Object.keys(obj).forEach(k=>{ if(k in P) P[k]=obj[k]; });
+  if(keepLines) P.smearLines=keepLines;
+  if(!Array.isArray(P.maskRects)) P.maskRects=[];
+  if(!Array.isArray(P.smearLines)) P.smearLines=[];
+  if(P.pxLock && !Array.isArray(P.pxLock)) P.pxLock=null;
+  ringReset(); persistReset();
+  refreshAll(); resizeOutput(); requestRender();
+  updateMaskCount(); updateLineCount(); drawMaskOverlay();
+}
+const LSKEY="asciivd.presets";
+const userPresets = ()=>{ try{ return JSON.parse(localStorage.getItem(LSKEY)||"{}"); }catch(e){ return {}; } };
+const saveUser = o=>localStorage.setItem(LSKEY,JSON.stringify(o));
+
+/* Phosphor / stock palettes. These touch colour only — the look you have dialled
+   in stays put when you switch tube. */
+const PALETTES = [
+  ["white",    "#ffffff", "#000000"],
+  ["amber",    "#ffb000", "#150c00"],
+  ["green",    "#33ff33", "#021206"],
+  ["blue",     "#58a6ff", "#00060f"],
+  ["vt green", "#4af626", "#08130b"],
+  ["cyan",     "#66fcf1", "#041014"],
+  ["ember",    "#ff5b1f", "#120400"],
+  ["game boy", "#9bbc0f", "#0f380f"],
+  ["paper",    "#17140f", "#efe9dc"]
+];
+
+/* ----------------------------------------------------------------------
+   Drawing blocks straight on the canvas. Rectangles are stored normalised to
+   the frame, so they survive resolution changes and travel inside presets.
+   ---------------------------------------------------------------------- */
+const maskLayer=$("#maskLayer"), mlx=maskLayer.getContext("2d");
+let drawingMask=false, dragRect=null, dragStart=null;
+let drawingLines=false, lineSel=-1, lineHover=null, lineDrag=null, dragLine=null, lineStart=null;
+let maskDrag=null, maskSel=-1, maskHover=null;
+const HANDLE=9;                       // handle size in screen pixels
+const HIT=11;                         // grab radius in screen pixels
+
+function maskGeom(){
+  const r=out.getBoundingClientRect(), s=$("#stage").getBoundingClientRect();
+  return {left:r.left-s.left, top:r.top-s.top, w:r.width, h:r.height};
+}
+function syncMaskLayer(){
+  const g=maskGeom();
+  maskLayer.style.left=g.left+"px"; maskLayer.style.top=g.top+"px";
+  maskLayer.style.width=g.w+"px";   maskLayer.style.height=g.h+"px";
+  if(maskLayer.width!==Math.round(g.w)||maskLayer.height!==Math.round(g.h)){
+    maskLayer.width=Math.max(1,Math.round(g.w)); maskLayer.height=Math.max(1,Math.round(g.h));
+  }
+}
+
+/* handle positions in overlay pixels */
+function handlePoints(r,W,H){
+  const x=r.x*W, y=r.y*H, w=r.w*W, h=r.h*H;
+  return {
+    nw:[x,y], ne:[x+w,y], sw:[x,y+h], se:[x+w,y+h],
+    c:[x+w/2,y+h/2]
+  };
+}
+/* topmost block under the pointer, and which handle if any */
+function hitTest(px,py,W,H){
+  for(let i=P.maskRects.length-1;i>=0;i--){
+    const r=P.maskRects[i], pts=handlePoints(r,W,H);
+    for(const k of ["nw","ne","sw","se","c"]){
+      const [hx,hy]=pts[k];
+      if(Math.abs(px-hx)<=HIT && Math.abs(py-hy)<=HIT) return {idx:i,handle:k};
+    }
+  }
+  for(let i=P.maskRects.length-1;i>=0;i--){
+    const r=P.maskRects[i];
+    if(px>=r.x*W && px<=(r.x+r.w)*W && py>=r.y*H && py<=(r.y+r.h)*H) return {idx:i,handle:null};
+  }
+  return null;
+}
+const CURSORS={nw:"nwse-resize",se:"nwse-resize",ne:"nesw-resize",sw:"nesw-resize",c:"move"};
+
+function drawMaskOverlay(){
+  const toolOn = drawingMask || drawingLines;
+  maskLayer.classList.toggle("on", !!toolOn);
+  if(!toolOn) return;
+  syncMaskLayer();
+  const W=maskLayer.width, H=maskLayer.height;
+  mlx.clearRect(0,0,W,H);
+  mlx.lineWidth=1;
+  if(drawingLines){ drawLinesOverlay(W,H); return; }
+  P.maskRects.forEach((r,i)=>{
+    const x=r.x*W,y=r.y*H,w=r.w*W,h=r.h*H;
+    const active = i===maskSel;
+    mlx.fillStyle= active ? "rgba(255,91,31,.22)" : "rgba(255,91,31,.12)";
+    mlx.fillRect(x,y,w,h);
+    mlx.strokeStyle="#ff5b1f"; mlx.lineWidth = active?2:1;
+    mlx.strokeRect(x+.5,y+.5,w-1,h-1);
+    mlx.fillStyle="#ff5b1f"; mlx.font="10px ui-monospace,monospace";
+    mlx.fillText(String(i+1),x+4,y+12);
+    // handles
+    const pts=handlePoints(r,W,H);
+    mlx.lineWidth=1;
+    for(const k of ["nw","ne","sw","se"]){
+      const [hx,hy]=pts[k];
+      mlx.fillStyle= (maskHover&&maskHover.idx===i&&maskHover.handle===k) ? "#fff" : "#ff5b1f";
+      mlx.fillRect(hx-HANDLE/2,hy-HANDLE/2,HANDLE,HANDLE);
+      mlx.strokeStyle="#0b0b0c"; mlx.strokeRect(hx-HANDLE/2+.5,hy-HANDLE/2+.5,HANDLE-1,HANDLE-1);
+    }
+    const [cx,cy]=pts.c;
+    const hovC = maskHover&&maskHover.idx===i&&maskHover.handle==="c";
+    mlx.fillStyle= hovC ? "#fff" : "#ff5b1f";
+    mlx.beginPath(); mlx.arc(cx,cy,HANDLE*.7,0,6.2832); mlx.fill();
+    mlx.strokeStyle="#0b0b0c"; mlx.lineWidth=1.5;             // move cross
+    mlx.beginPath();
+    mlx.moveTo(cx-4,cy); mlx.lineTo(cx+4,cy);
+    mlx.moveTo(cx,cy-4); mlx.lineTo(cx,cy+4);
+    mlx.stroke();
+  });
+  if(dragRect){                                   // block being drawn right now
+    const x=dragRect.x*W,y=dragRect.y*H,w=dragRect.w*W,h=dragRect.h*H;
+    mlx.setLineDash([4,3]); mlx.lineWidth=1; mlx.strokeStyle="#ff5b1f";
+    mlx.fillStyle="rgba(255,91,31,.10)";
+    mlx.fillRect(x,y,w,h); mlx.strokeRect(x+.5,y+.5,w-1,h-1);
+    mlx.setLineDash([]);
+  }
+}
+function setDrawMask(on){
+  if(on && drawingLines) setDrawLines(false);        // one drawing tool at a time
+  drawingMask=on;
+  if(on){ $("#maskhint").textContent=BLOCK_HINT; maskLayer.style.cursor="crosshair"; }
+  $("#stage").classList.toggle("drawing",on);
+  maskLayer.classList.toggle("on",on);
+  if(!on){ maskSel=-1; maskHover=null; maskDrag=null; }
+  if(on) P.maskOn=true;
+  refreshControl("maskOn"); markDirty("maskOn");
+  const b=$("#btnDrawMask"); if(b){ b.classList.toggle("on",on); b.textContent = on?"Finish drawing":"Draw blocks"; }
+  requestRender(); drawMaskOverlay();
+}
+const toLocal=e=>{
+  const g=maskGeom(), s=$("#stage").getBoundingClientRect();
+  return {x:clamp((e.clientX-s.left-g.left)/g.w,0,1), y:clamp((e.clientY-s.top-g.top)/g.h,0,1)};
+};
+const MINSZ=.012;
+function normRect(r){                              // keep on-frame, keep positive size
+  const x=clamp(r.x,0,1), y=clamp(r.y,0,1);
+  return {x, y, w:clamp(r.w,MINSZ,1-x), h:clamp(r.h,MINSZ,1-y)};
+}
+
+maskLayer.addEventListener("pointerdown",e=>{
+  if(!drawingMask) return;
+  if(maskLayer.setPointerCapture) maskLayer.setPointerCapture(e.pointerId);
+  const p=toLocal(e), W=maskLayer.width, H=maskLayer.height;
+  const hit=hitTest(p.x*W,p.y*H,W,H);
+  dragStart=p; dragRect=null;
+  if(hit && hit.handle){
+    maskSel=hit.idx;
+    maskDrag={kind: hit.handle==="c" ? "move":"resize", handle:hit.handle, idx:hit.idx,
+              start:p, orig:{...P.maskRects[hit.idx]}, moved:false};
+  } else if(hit){
+    maskSel=hit.idx;                                // select, but a drag still draws a new block
+    maskDrag=null;
+  } else {
+    maskSel=-1; maskDrag=null;
+  }
+  drawMaskOverlay();
+});
+
+maskLayer.addEventListener("pointermove",e=>{
+  if(!drawingMask) return;
+  const p=toLocal(e), W=maskLayer.width, H=maskLayer.height;
+  if(!dragStart){                                   // hover feedback only
+    const h=hitTest(p.x*W,p.y*H,W,H);
+    const key=h&&h.handle ? h.idx+h.handle : "";
+    const prev=maskHover&&maskHover.handle ? maskHover.idx+maskHover.handle : "";
+    maskHover=h;
+    maskLayer.style.cursor = h&&h.handle ? CURSORS[h.handle] : "crosshair";
+    if(key!==prev) drawMaskOverlay();
+    return;
+  }
+  if(maskDrag){
+    const dx=p.x-maskDrag.start.x, dy=p.y-maskDrag.start.y;
+    const o=maskDrag.orig;
+    if(Math.abs(dx)>.001||Math.abs(dy)>.001) maskDrag.moved=true;
+    if(maskDrag.kind==="move"){
+      P.maskRects[maskDrag.idx]={x:clamp(o.x+dx,0,1-o.w), y:clamp(o.y+dy,0,1-o.h), w:o.w, h:o.h};
+    } else {
+      // drag a corner, holding the opposite one still
+      const fixed={x: maskDrag.handle==="nw"||maskDrag.handle==="sw" ? o.x+o.w : o.x,
+                   y: maskDrag.handle==="nw"||maskDrag.handle==="ne" ? o.y+o.h : o.y};
+      const moving={x:clamp((maskDrag.handle==="nw"||maskDrag.handle==="sw" ? o.x : o.x+o.w)+dx,0,1),
+                    y:clamp((maskDrag.handle==="nw"||maskDrag.handle==="ne" ? o.y : o.y+o.h)+dy,0,1)};
+      P.maskRects[maskDrag.idx]=normRect({
+        x:Math.min(fixed.x,moving.x), y:Math.min(fixed.y,moving.y),
+        w:Math.abs(moving.x-fixed.x), h:Math.abs(moving.y-fixed.y)});
+    }
+    requestRender(); drawMaskOverlay();
+    return;
+  }
+  dragRect={x:Math.min(dragStart.x,p.x), y:Math.min(dragStart.y,p.y),
+            w:Math.abs(p.x-dragStart.x), h:Math.abs(p.y-dragStart.y)};
+  drawMaskOverlay();
+});
+
+maskLayer.addEventListener("pointerup",e=>{
+  if(!drawingMask||!dragStart) return;
+  const p=toLocal(e);
+  if(maskDrag){
+    maskDrag=null;                                  // move / resize already applied live
+  } else {
+    const w=Math.abs(p.x-dragStart.x), h=Math.abs(p.y-dragStart.y);
+    if(w>=MINSZ && h>=MINSZ){
+      P.maskRects.push(normRect({x:Math.min(dragStart.x,p.x), y:Math.min(dragStart.y,p.y), w, h}));
+      maskSel=P.maskRects.length-1;
+    }
+    // a plain click on empty space clears the selection; on a block it selects it
+  }
+  dragStart=null; dragRect=null;
+  updateMaskCount(); requestRender(); drawMaskOverlay();
+});
+
+maskLayer.addEventListener("dblclick",e=>{
+  if(!drawingMask) return;
+  const p=toLocal(e), W=maskLayer.width, H=maskLayer.height;
+  const hit=hitTest(p.x*W,p.y*H,W,H);
+  if(hit){ P.maskRects.splice(hit.idx,1); maskSel=-1; updateMaskCount(); requestRender(); drawMaskOverlay(); }
+});
+
+function deleteSelectedBlock(){
+  if(!drawingMask||maskSel<0||maskSel>=P.maskRects.length) return false;
+  P.maskRects.splice(maskSel,1); maskSel=-1;
+  updateMaskCount(); requestRender(); drawMaskOverlay();
+  return true;
+}
+function updateMaskCount(){
+  const el=$("#maskCount");
+  if(el) el.textContent = P.maskRects.length ? `${P.maskRects.length} block${P.maskRects.length>1?"s":""}` : "no blocks yet";
+}
+function buildPixelTools(){
+  const body=document.querySelector('.group[data-name="8-BIT"] .gbody');
+  if(!body) return;
+  const bar=document.createElement("div"); bar.className="btnrow";
+  const lock=document.createElement("button"); lock.className="mini"; lock.id="btnPxLock";
+  lock.onclick=()=>{
+    if(P.pxLock){ P.pxLock=null; }
+    else {
+      renderFrame();                                  // make sure a palette exists
+      const pal = (autoPal&&autoPal.length) ? autoPal : medianCut(RGB,P.pxAuto|0);
+      P.pxLock = pal.map(toHex);
+    }
+    updatePxLock(); requestRender();
+  };
+  bar.append(lock);
+  const note=document.createElement("p"); note.className="note"; note.id="pxLockNote";
+  body.append(bar,note);
+  updatePxLock();
+}
+function updatePxLock(){
+  const b=$("#btnPxLock"), n=$("#pxLockNote");
+  if(!b) return;
+  const auto = P.pxPal==="auto (from frame)";
+  b.parentElement.style.display = auto ? "" : "none";
+  if(n) n.style.display = auto ? "" : "none";
+  b.classList.toggle("on", !!P.pxLock);
+  b.textContent = P.pxLock ? "Unlock palette" : "Lock palette";
+  if(n) n.textContent = P.pxLock ? `${P.pxLock.length} colours held` : "palette follows the picture";
+}
+
+/* ======================================================================
+   SMEAR LINES
+   Draw a line on the canvas and every pixel along it is dragged out across the
+   frame — the stuck-row streak you get when a datamosh loses its motion data.
+   A mostly-vertical drag makes a vertical line that bleeds sideways; a mostly-
+   horizontal drag makes a horizontal one that bleeds up or down.
+   ====================================================================== */
+const BLOCK_HINT="drag to add · centre handle moves · corners resize · ⌫ or double-click removes · esc to finish";
+const LINE_HINT ="drag down for a vertical line, sideways for a horizontal one · drag a line to move it · ends resize · ⌫ or double-click removes · esc to finish";
+const LMIN=.02;
+
+function smearHash(a,b,c){ const v=Math.sin(a*127.1+b*311.7+c*74.7)*43758.5453; return v-Math.floor(v); }
+function smearDirs(){ return P.smDir==="both ways" ? [1,-1] : P.smDir==="left / up" ? [-1] : [1]; }
+
+function linePts(l,W,H){
+  if(l.o==="v") return {a:[l.x*W,l.y0*H], b:[l.x*W,l.y1*H], c:[l.x*W,(l.y0+l.y1)/2*H]};
+  return {a:[l.x0*W,l.y*H], b:[l.x1*W,l.y*H], c:[(l.x0+l.x1)/2*W,l.y*H]};
+}
+function lineHit(px,py,W,H){
+  const ls=P.smearLines;
+  for(let i=ls.length-1;i>=0;i--){
+    const pts=linePts(ls[i],W,H);
+    for(const k of ["a","b","c"]){
+      const [hx,hy]=pts[k];
+      if(Math.abs(px-hx)<=HIT && Math.abs(py-hy)<=HIT) return {idx:i,handle:k};
+    }
+  }
+  for(let i=ls.length-1;i>=0;i--){                      // grabbing the line itself
+    const l=ls[i];
+    if(l.o==="v"){ if(Math.abs(px-l.x*W)<=7 && py>=l.y0*H-7 && py<=l.y1*H+7) return {idx:i,handle:"c"}; }
+    else          { if(Math.abs(py-l.y*H)<=7 && px>=l.x0*W-7 && px<=l.x1*W+7) return {idx:i,handle:"c"}; }
+  }
+  return null;
+}
+
+function drawLinesOverlay(W,H){
+  const dirs=smearDirs();
+  const all=P.smearLines.concat(dragLine?[dragLine]:[]);
+  all.forEach((l,i)=>{
+    const isDrag = l===dragLine;
+    const active = !isDrag && i===lineSel;
+    const pts=linePts(l,W,H);
+    // show which way this line will bleed
+    const reach=Math.min(90,(l.o==="v"?W:H)*.18);
+    for(const d of dirs){
+      if(l.o==="v"){
+        const x=pts.a[0], x2=x+d*reach, g=mlx.createLinearGradient(x,0,x2,0);
+        g.addColorStop(0,"rgba(255,91,31,.3)"); g.addColorStop(1,"rgba(255,91,31,0)");
+        mlx.fillStyle=g; mlx.fillRect(Math.min(x,x2),pts.a[1],reach,pts.b[1]-pts.a[1]);
+      } else {
+        const y=pts.a[1], y2=y+d*reach, g=mlx.createLinearGradient(0,y,0,y2);
+        g.addColorStop(0,"rgba(255,91,31,.3)"); g.addColorStop(1,"rgba(255,91,31,0)");
+        mlx.fillStyle=g; mlx.fillRect(pts.a[0],Math.min(y,y2),pts.b[0]-pts.a[0],reach);
+      }
+    }
+    mlx.setLineDash(isDrag?[4,3]:[]);
+    mlx.strokeStyle="#ff5b1f"; mlx.lineWidth=active?3:2;
+    mlx.beginPath(); mlx.moveTo(pts.a[0],pts.a[1]); mlx.lineTo(pts.b[0],pts.b[1]); mlx.stroke();
+    mlx.setLineDash([]);
+    if(isDrag) return;
+    mlx.fillStyle="#ff5b1f"; mlx.font="10px ui-monospace,monospace";
+    mlx.fillText(String(i+1),pts.a[0]+6,pts.a[1]+12);
+    mlx.lineWidth=1;
+    for(const k of ["a","b"]){
+      const [hx,hy]=pts[k];
+      const hov=lineHover&&lineHover.idx===i&&lineHover.handle===k;
+      mlx.fillStyle=hov?"#fff":"#ff5b1f";
+      mlx.fillRect(hx-HANDLE/2,hy-HANDLE/2,HANDLE,HANDLE);
+      mlx.strokeStyle="#0b0b0c"; mlx.strokeRect(hx-HANDLE/2+.5,hy-HANDLE/2+.5,HANDLE-1,HANDLE-1);
+    }
+    const [cx,cy]=pts.c, hovC=lineHover&&lineHover.idx===i&&lineHover.handle==="c";
+    mlx.fillStyle=hovC?"#fff":"#ff5b1f";
+    mlx.beginPath(); mlx.arc(cx,cy,HANDLE*.7,0,6.2832); mlx.fill();
+    mlx.strokeStyle="#0b0b0c"; mlx.lineWidth=1.5;
+    mlx.beginPath(); mlx.moveTo(cx-4,cy); mlx.lineTo(cx+4,cy); mlx.moveTo(cx,cy-4); mlx.lineTo(cx,cy+4); mlx.stroke();
+  });
+}
+
+function setDrawLines(on){
+  if(on && drawingMask) setDrawMask(false);          // one drawing tool at a time
+  drawingLines=on;
+  $("#stage").classList.toggle("drawing",on);
+  maskLayer.classList.toggle("on",on);
+  maskLayer.style.cursor="crosshair";
+  if(!on){ lineSel=-1; lineHover=null; lineDrag=null; lineStart=null; dragLine=null; }
+  if(on){ P.smOn=true; $("#maskhint").textContent=LINE_HINT; }
+  refreshControl("smOn"); markDirty("smOn"); syncVisibility();
+  const b=$("#btnDrawLines"); if(b){ b.classList.toggle("on",on); b.textContent=on?"Finish lines":"Draw lines"; }
+  requestRender(); drawMaskOverlay();
+}
+
+maskLayer.addEventListener("pointerdown",e=>{
+  if(!drawingLines) return;
+  if(maskLayer.setPointerCapture) maskLayer.setPointerCapture(e.pointerId);
+  const p=toLocal(e), W=maskLayer.width, H=maskLayer.height;
+  const hit=lineHit(p.x*W,p.y*H,W,H);
+  lineStart=p; dragLine=null;
+  if(hit){
+    lineSel=hit.idx;
+    lineDrag={handle:hit.handle, idx:hit.idx, start:p, orig:{...P.smearLines[hit.idx]}};
+  } else { lineSel=-1; lineDrag=null; }
+  drawMaskOverlay();
+});
+maskLayer.addEventListener("pointermove",e=>{
+  if(!drawingLines) return;
+  const p=toLocal(e), W=maskLayer.width, H=maskLayer.height;
+  if(!lineStart){                                     // hover feedback
+    const h=lineHit(p.x*W,p.y*H,W,H);
+    const key=h?h.idx+h.handle:"", prev=lineHover?lineHover.idx+lineHover.handle:"";
+    lineHover=h;
+    maskLayer.style.cursor = !h ? "crosshair"
+      : h.handle==="c" ? "move"
+      : (P.smearLines[h.idx].o==="v" ? "ns-resize" : "ew-resize");
+    if(key!==prev) drawMaskOverlay();
+    return;
+  }
+  if(lineDrag){
+    const o=lineDrag.orig, dx=p.x-lineDrag.start.x, dy=p.y-lineDrag.start.y, n={...o};
+    if(lineDrag.handle==="c"){
+      if(o.o==="v"){ const span=o.y1-o.y0; n.x=clamp(o.x+dx,0,1); n.y0=clamp(o.y0+dy,0,1-span); n.y1=n.y0+span; }
+      else          { const span=o.x1-o.x0; n.y=clamp(o.y+dy,0,1); n.x0=clamp(o.x0+dx,0,1-span); n.x1=n.x0+span; }
+    } else {                                          // an end slides along the line's own axis
+      const v=o.o==="v";
+      const lo=v?o.y0:o.x0, hi=v?o.y1:o.x1;
+      const moving=clamp((lineDrag.handle==="a"?lo:hi)+(v?dy:dx),0,1);
+      const fixed = lineDrag.handle==="a"?hi:lo;
+      let a0=Math.min(moving,fixed), a1=Math.max(moving,fixed);
+      if(a1-a0<LMIN){ const mid=(a0+a1)/2; a0=clamp(mid-LMIN/2,0,1-LMIN); a1=a0+LMIN; }
+      if(v){ n.y0=a0; n.y1=a1; } else { n.x0=a0; n.x1=a1; }
+    }
+    P.smearLines[lineDrag.idx]=n;
+    requestRender(); drawMaskOverlay();
+    return;
+  }
+  const dx=p.x-lineStart.x, dy=p.y-lineStart.y;
+  dragLine = Math.abs(dy)*H>=Math.abs(dx)*W
+    ? {o:"v", x:lineStart.x, y0:Math.min(lineStart.y,p.y), y1:Math.max(lineStart.y,p.y)}
+    : {o:"h", y:lineStart.y, x0:Math.min(lineStart.x,p.x), x1:Math.max(lineStart.x,p.x)};
+  drawMaskOverlay();
+});
+maskLayer.addEventListener("pointerup",()=>{
+  if(!drawingLines||!lineStart) return;
+  if(lineDrag){ lineDrag=null; }
+  else if(dragLine){
+    const span = dragLine.o==="v" ? dragLine.y1-dragLine.y0 : dragLine.x1-dragLine.x0;
+    if(span>=LMIN){ P.smearLines.push(dragLine); lineSel=P.smearLines.length-1; }
+  }
+  lineStart=null; dragLine=null;
+  updateLineCount(); requestRender(); drawMaskOverlay();
+});
+maskLayer.addEventListener("dblclick",e=>{
+  if(!drawingLines) return;
+  const p=toLocal(e), W=maskLayer.width, H=maskLayer.height;
+  const hit=lineHit(p.x*W,p.y*H,W,H);
+  if(hit){ P.smearLines.splice(hit.idx,1); lineSel=-1; updateLineCount(); requestRender(); drawMaskOverlay(); }
+});
+function deleteSelectedLine(){
+  if(!drawingLines||lineSel<0||lineSel>=P.smearLines.length) return false;
+  P.smearLines.splice(lineSel,1); lineSel=-1;
+  updateLineCount(); requestRender(); drawMaskOverlay();
+  return true;
+}
+function updateLineCount(){
+  const el=$("#lineCount"); if(!el) return;
+  const n=P.smearLines.length;
+  el.textContent = n ? `${n} line${n>1?"s":""}` : "no lines yet";
+}
+function buildSmearTools(){
+  const body=document.querySelector('.group[data-name="SMEAR"] .gbody');
+  if(!body) return;
+  const bar=document.createElement("div"); bar.className="btnrow";
+  const draw=document.createElement("button"); draw.className="mini"; draw.id="btnDrawLines"; draw.textContent="Draw lines";
+  draw.onclick=()=>setDrawLines(!drawingLines);
+  const full=document.createElement("button"); full.className="mini"; full.textContent="Full span";
+  full.title="stretch the selected line (or the last one) edge to edge";
+  full.onclick=()=>{
+    const i = lineSel>=0 ? lineSel : P.smearLines.length-1;
+    const l=P.smearLines[i]; if(!l) return;
+    if(l.o==="v"){ l.y0=0; l.y1=1; } else { l.x0=0; l.x1=1; }
+    requestRender(); drawMaskOverlay();
+  };
+  const clr=document.createElement("button"); clr.className="mini"; clr.textContent="Clear";
+  clr.onclick=()=>{ P.smearLines=[]; lineSel=-1; updateLineCount(); requestRender(); drawMaskOverlay(); };
+  bar.append(draw,full,clr);
+  const count=document.createElement("p"); count.className="note"; count.id="lineCount";
+  body.prepend(bar,count);
+  updateLineCount();
+}
+
+/* After the effect: streak the rendered frame itself. Each row band pulls one
+   pixel from the line and stretches it out; ragged ends, sample wobble and a
+   brightness gate break up the regularity, re-rolled at the flicker rate. */
+const smearCv=document.createElement("canvas"), smctx=smearCv.getContext("2d");
+const snapCv=document.createElement("canvas"), snctx=snapCv.getContext("2d");
+function applyLineSmear(){
+  if(!P.smOn || !P.smearLines.length || P.smStage!=="after effect" || P.smAmt<=0) return;
+  if(snapCv.width!==outW||snapCv.height!==outH){ snapCv.width=outW; snapCv.height=outH; }
+  if(smearCv.width!==outW||smearCv.height!==outH){ smearCv.width=outW; smearCv.height=outH; }
+  snctx.globalCompositeOperation="source-over"; snctx.clearRect(0,0,outW,outH);
+  snctx.drawImage(out,0,0);                           // streaks sample the frame as rendered
+  const tick=Math.floor(renderTime*P.smRate), band=Math.max(1,P.smBand|0), dirs=smearDirs();
+  const lumAt=(d,j)=>(0.2126*d[j]+0.7152*d[j+1]+0.0722*d[j+2])/255;
+  P.smearLines.forEach((l,li)=>{
+    smctx.globalCompositeOperation="source-over";
+    smctx.clearRect(0,0,outW,outH);
+    smctx.imageSmoothingEnabled=false;
+    if(l.o==="v"){
+      const xl=Math.round(clamp(l.x,0,1)*(outW-1));
+      const ya=Math.max(0,Math.round(l.y0*outH)), yb=Math.min(outH,Math.round(l.y1*outH));
+      if(yb<=ya) return;
+      const gate=P.smGate>0 ? snctx.getImageData(xl,ya,1,yb-ya).data : null;
+      for(let y=ya;y<yb;y+=band){
+        const bi=Math.floor(y/band), r1=smearHash(bi,li,tick), r2=smearHash(bi,li+17,tick);
+        if(gate && lumAt(gate,(y-ya)*4)<P.smGate) continue;
+        const xs=clamp(xl+Math.round((r2-.5)*2*P.smWobble),0,outW-1), bh=Math.min(band,yb-y);
+        for(const d of dirs){
+          const room=d>0?outW-1-xl:xl;
+          const len=Math.max(1,Math.round(room*P.smLen*(1-P.smJitter*r1)));
+          smctx.drawImage(snapCv,xs,y,1,bh, d>0?xl+1:xl-len,y,len,bh);
+        }
+      }
+      if(P.smDecay>0){
+        smctx.globalCompositeOperation="destination-out";
+        for(const d of dirs){
+          const g=smctx.createLinearGradient(xl,0,d>0?outW:0,0);
+          g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,`rgba(0,0,0,${P.smDecay})`);
+          smctx.fillStyle=g;
+          if(d>0) smctx.fillRect(xl,ya,outW-xl,yb-ya); else smctx.fillRect(0,ya,xl+1,yb-ya);
+        }
+      }
+    } else {
+      const yl=Math.round(clamp(l.y,0,1)*(outH-1));
+      const xa=Math.max(0,Math.round(l.x0*outW)), xb=Math.min(outW,Math.round(l.x1*outW));
+      if(xb<=xa) return;
+      const gate=P.smGate>0 ? snctx.getImageData(xa,yl,xb-xa,1).data : null;
+      for(let x=xa;x<xb;x+=band){
+        const bi=Math.floor(x/band), r1=smearHash(bi,li,tick), r2=smearHash(bi,li+17,tick);
+        if(gate && lumAt(gate,(x-xa)*4)<P.smGate) continue;
+        const ys=clamp(yl+Math.round((r2-.5)*2*P.smWobble),0,outH-1), bw=Math.min(band,xb-x);
+        for(const d of dirs){
+          const room=d>0?outH-1-yl:yl;
+          const len=Math.max(1,Math.round(room*P.smLen*(1-P.smJitter*r1)));
+          smctx.drawImage(snapCv,x,ys,bw,1, x,d>0?yl+1:yl-len,bw,len);
+        }
+      }
+      if(P.smDecay>0){
+        smctx.globalCompositeOperation="destination-out";
+        for(const d of dirs){
+          const g=smctx.createLinearGradient(0,yl,0,d>0?outH:0);
+          g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,`rgba(0,0,0,${P.smDecay})`);
+          smctx.fillStyle=g;
+          if(d>0) smctx.fillRect(xa,yl,xb-xa,outH-yl); else smctx.fillRect(xa,0,xb-xa,yl+1);
+        }
+      }
+    }
+    smctx.globalCompositeOperation="source-over";
+    octx.save();
+    octx.globalAlpha=P.smAmt;
+    octx.globalCompositeOperation = P.smBlend==="add" ? "lighter" : P.smBlend==="screen" ? "screen" : "source-over";
+    octx.drawImage(smearCv,0,0);
+    octx.restore();
+  });
+}
+
+/* Before the effect: smear the working grid instead, so the streaks are then
+   dithered, typeset or printed along with everything else. */
+function gridLineSmear(w,h){
+  if(!P.smOn || !P.smearLines.length || P.smStage!=="before effect" || P.smAmt<=0) return;
+  const tick=Math.floor(renderTime*P.smRate), dirs=smearDirs();
+  const srcL=Float32Array.from(L);
+  const srcC=(rgbLive&&RGB&&RGB.length===L.length*3) ? Float32Array.from(RGB) : null;
+  const streak=(i,si,k,len)=>{
+    const keep=P.smAmt*(1-P.smDecay*(k/len));
+    L[i]=L[i]*(1-keep)+srcL[si]*keep;
+    if(srcC) for(let c=0;c<3;c++) RGB[i*3+c]=RGB[i*3+c]*(1-keep)+srcC[si*3+c]*keep;
+  };
+  P.smearLines.forEach((l,li)=>{
+    if(l.o==="v"){
+      const band=Math.max(1,Math.round(P.smBand*h/outH)), wob=P.smWobble*w/outW;
+      const xl=Math.round(clamp(l.x,0,1)*(w-1));
+      const ya=Math.max(0,Math.floor(l.y0*h)), yb=Math.min(h,Math.ceil(l.y1*h));
+      for(let y=ya;y<yb;y++){
+        const bi=Math.floor(y/band), r1=smearHash(bi,li,tick), r2=smearHash(bi,li+17,tick);
+        const xs=clamp(xl+Math.round((r2-.5)*2*wob),0,w-1), si=y*w+xs;
+        if(P.smGate>0 && srcL[si]<P.smGate) continue;
+        for(const d of dirs){
+          const len=Math.max(1,Math.round((d>0?w-1-xl:xl)*P.smLen*(1-P.smJitter*r1)));
+          for(let k=1;k<=len;k++){ const x=xl+d*k; if(x<0||x>=w) break; streak(y*w+x,si,k,len); }
+        }
+      }
+    } else {
+      const band=Math.max(1,Math.round(P.smBand*w/outW)), wob=P.smWobble*h/outH;
+      const yl=Math.round(clamp(l.y,0,1)*(h-1));
+      const xa=Math.max(0,Math.floor(l.x0*w)), xb=Math.min(w,Math.ceil(l.x1*w));
+      for(let x=xa;x<xb;x++){
+        const bi=Math.floor(x/band), r1=smearHash(bi,li,tick), r2=smearHash(bi,li+17,tick);
+        const ys=clamp(yl+Math.round((r2-.5)*2*wob),0,h-1), si=ys*w+x;
+        if(P.smGate>0 && srcL[si]<P.smGate) continue;
+        for(const d of dirs){
+          const len=Math.max(1,Math.round((d>0?h-1-yl:yl)*P.smLen*(1-P.smJitter*r1)));
+          for(let k=1;k<=len;k++){ const y=yl+d*k; if(y<0||y>=h) break; streak(y*w+x,si,k,len); }
+        }
+      }
+    }
+  });
+}
+
+/* ======================================================================
+   HIGHLIGHT BLEED
+   Blown-out highlights drag a burning trail across the frame, as when an
+   overdriven sensor or tape head smears bright light down the scan. A running
+   decayed maximum along each row carries every highlight onward.
+   ====================================================================== */
+const hbSrcCv=document.createElement("canvas"), hbSrcCtx=hbSrcCv.getContext("2d",{willReadFrequently:true});
+const hbOutCv=document.createElement("canvas"), hbOutCtx=hbOutCv.getContext("2d");
+function applyHighlightBleed(){
+  if(P.hbAmt<=0) return;
+  const sc=Math.max(1,P.hbRes|0);
+  const w=Math.max(2,Math.ceil(outW/sc)), h=Math.max(2,Math.ceil(outH/sc));
+  if(hbSrcCv.width!==w||hbSrcCv.height!==h){ hbSrcCv.width=w; hbSrcCv.height=h; hbOutCv.width=w; hbOutCv.height=h; }
+  if(P.hbFrom==="source") drawSource(hbSrcCtx,w,h);
+  else { hbSrcCtx.imageSmoothingEnabled=true; hbSrcCtx.drawImage(out,0,0,w,h); }
+  const src=hbSrcCtx.getImageData(0,0,w,h).data;
+  const img=hbOutCtx.createImageData(w,h), o=img.data;
+  const horiz=P.hbDir==="right"||P.hbDir==="left", fwd=P.hbDir==="right"||P.hbDir==="down";
+  const lines=horiz?h:w, span=horiz?w:h;
+  const decay=Math.exp(-4/Math.max(1,P.hbLen*span));   // ~2% left after one streak length
+  const lo=P.hbThresh, hi=Math.min(1.0001,P.hbThresh+Math.max(.005,P.hbSoft));
+  const tint=P.hbColor==="tint"?hex2rgb(P.hbTint):null;
+  const tick=Math.floor(renderTime*P.hbRate);
+  for(let a=0;a<lines;a++){
+    const gain=1-P.hbFlicker*smearHash(a,3.7,tick);
+    let ar=0,ag=0,ab=0;
+    for(let s=0;s<span;s++){
+      const b=fwd?s:span-1-s, x=horiz?b:a, y=horiz?a:b, i=(y*w+x)*4;
+      const r=src[i], g=src[i+1], bl=src[i+2];
+      let k=((0.2126*r+0.7152*g+0.0722*bl)/255-lo)/(hi-lo);
+      k=k<0?0:k>1?1:k; k=k*k*(3-2*k);
+      const hr=tint?tint[0]*k:r*k, hg=tint?tint[1]*k:g*k, hb=tint?tint[2]*k:bl*k;
+      ar*=decay; ag*=decay; ab*=decay;
+      if(hr>ar) ar=hr; if(hg>ag) ag=hg; if(hb>ab) ab=hb;
+      o[i]=ar*gain; o[i+1]=ag*gain; o[i+2]=ab*gain; o[i+3]=255;
+    }
+  }
+  hbOutCtx.putImageData(img,0,0);
+  octx.save();
+  octx.globalCompositeOperation = P.hbBlend==="add" ? "lighter" : "screen";
+  octx.imageSmoothingEnabled=true;
+  octx.globalAlpha=Math.min(1,P.hbAmt);
+  octx.drawImage(hbOutCv,0,0,outW,outH);
+  if(P.hbAmt>1){ octx.globalAlpha=P.hbAmt-1; octx.drawImage(hbOutCv,0,0,outW,outH); }
+  octx.restore();
+}
+
+function buildMaskTools(){
+  const body=document.querySelector('.group[data-name="MASK"] .gbody');
+  if(!body) return;
+  const bar=document.createElement("div"); bar.className="btnrow";
+  const draw=document.createElement("button"); draw.className="mini"; draw.id="btnDrawMask"; draw.textContent="Draw blocks";
+  draw.onclick=()=>setDrawMask(!drawingMask);
+  const clr=document.createElement("button"); clr.className="mini"; clr.textContent="Clear";
+  clr.onclick=()=>{ P.maskRects=[]; updateMaskCount(); requestRender(); drawMaskOverlay(); };
+  bar.append(draw,clr);
+  const count=document.createElement("p"); count.className="note"; count.id="maskCount";
+  body.append(bar,count);
+  updateMaskCount();
+}
+
+function buildPalettes(){
+  const body = document.querySelector('.group[data-name="COLOR"] .gbody');
+  if(!body) return;
+  const cap=document.createElement("p"); cap.className="note"; cap.textContent="Phosphor";
+  const grid=document.createElement("div"); grid.className="swatches";
+  PALETTES.forEach(([name,ink,paper])=>{
+    const b=document.createElement("button");
+    b.className="sw"; b.dataset.ink=ink; b.dataset.paper=paper;
+    b.style.background=paper; b.style.color=ink;
+    b.innerHTML=`<b>AB</b>${name}`;
+    b.title=`${ink} on ${paper}`;
+    b.onclick=()=>{ P.ink=ink; P.paper=paper; refreshControl("ink"); refreshControl("paper");
+                    markDirty("ink"); markDirty("paper"); markPalette(); requestRender(); };
+    grid.append(b);
+  });
+  const bar=document.createElement("div"); bar.className="btnrow";
+  const swap=document.createElement("button"); swap.className="mini"; swap.textContent="Swap ink / paper";
+  swap.onclick=()=>{ const i=P.ink; P.ink=P.paper; P.paper=i;
+    refreshControl("ink"); refreshControl("paper"); markDirty("ink"); markDirty("paper");
+    markPalette(); requestRender(); };
+  bar.append(swap);
+  body.append(cap,grid,bar);
+  markPalette();
+}
+function markPalette(){
+  document.querySelectorAll(".sw").forEach(b=>{
+    b.classList.toggle("on", b.dataset.ink===P.ink && b.dataset.paper===P.paper);
+  });
+}
+
+function buildPresetPanel(){
+  const host=$("#panelR");
+  const g=document.createElement("div"); g.className="group";
+  g.innerHTML='<h3>Presets</h3>';
+  const body=document.createElement("div"); body.className="gbody";
+  g.querySelector("h3").onclick=()=>g.classList.toggle("collapsed");
+
+  const built=document.createElement("div"); built.className="plist";
+  Object.keys(BUILTIN).forEach(name=>{
+    const b=document.createElement("button"); b.className="pload"; b.textContent=name;
+    b.onclick=()=>applyPreset(BUILTIN[name]);
+    const row=document.createElement("div"); row.className="pitem"; row.append(b); built.append(row);
+  });
+  const userWrap=document.createElement("div"); userWrap.className="plist"; userWrap.id="userPresets";
+  const hr=document.createElement("p"); hr.className="note"; hr.textContent="Your presets";
+
+  const bar=document.createElement("div"); bar.className="btnrow";
+  const bSave=document.createElement("button"); bSave.className="mini"; bSave.textContent="Save as…";
+  bSave.onclick=()=>{
+    const name=prompt("Preset name"); if(!name) return;
+    const u=userPresets(); u[name]=JSON.parse(JSON.stringify(P)); saveUser(u); renderUserPresets();
+  };
+  const bExp=document.createElement("button"); bExp.className="mini"; bExp.textContent="Export";
+  bExp.onclick=()=>download(new Blob([JSON.stringify(P,null,2)],{type:"application/json"}),`asciivd-preset_${stamp()}.json`);
+  const bExpAll=document.createElement("button"); bExpAll.className="mini"; bExpAll.textContent="Export saved";
+  bExpAll.title="Every saved preset in one file — Import it into another copy to carry them across";
+  bExpAll.onclick=()=>{
+    const u=userPresets(); if(!Object.keys(u).length){ alert("No saved presets to export"); return; }
+    download(new Blob([JSON.stringify({asciivdPresets:u},null,2)],{type:"application/json"}),`asciivd-presets_${stamp()}.json`);
+  };
+  const bImp=document.createElement("button"); bImp.className="mini"; bImp.textContent="Import";
+  bImp.onclick=()=>$("#presetIn").click();
+  const bRst=document.createElement("button"); bRst.className="mini"; bRst.textContent="Reset all";
+  bRst.onclick=()=>applyPreset({});
+  bar.append(bSave,bExp,bExpAll,bImp,bRst);
+
+  body.append(built,bar,hr,userWrap);
+  g.append(body); host.append(g);
+  renderUserPresets();
+}
+function renderUserPresets(){
+  const wrap=$("#userPresets"); if(!wrap) return;
+  const u=userPresets(); wrap.innerHTML="";
+  const keys=Object.keys(u);
+  if(!keys.length){ const p=document.createElement("p"); p.className="note"; p.textContent="none saved yet"; wrap.append(p); return; }
+  keys.forEach(name=>{
+    const row=document.createElement("div"); row.className="pitem";
+    const b=document.createElement("button"); b.className="pload"; b.textContent=name;
+    b.onclick=()=>applyPreset(u[name]);
+    const d=document.createElement("button"); d.className="pdel"; d.textContent="×";
+    d.onclick=()=>{ const uu=userPresets(); delete uu[name]; saveUser(uu); renderUserPresets(); };
+    row.append(b,d); wrap.append(row);
+  });
+}
+// Saved presets live in this origin's browser storage, so the copy opened as a file and
+// the one served from localhost keep separate libraries. "Export saved" then Import here
+// carries them across. Existing names are never overwritten; a clash is kept as "name (2)".
+function mergeUserPresets(incoming){
+  const u=userPresets(); let added=0;
+  for(const [name,p] of Object.entries(incoming)){
+    const same=JSON.stringify(p);
+    if(Object.keys(u).some(k=>(k===name||k.startsWith(name+" ("))&&JSON.stringify(u[k])===same)) continue;
+    let key=name; for(let i=2; key in u; i++) key=`${name} (${i})`;
+    u[key]=p; added++;
+  }
+  saveUser(u); renderUserPresets();
+  alert(added?`Added ${added} saved preset${added>1?"s":""}.`:"Those presets are already saved here.");
+}
+$("#presetIn").onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    let data; try{ data=JSON.parse(r.result); }catch(err){ alert("Bad preset file"); return; }
+    if(data&&data.asciivdPresets){ mergeUserPresets(data.asciivdPresets); return; }
+    try{ applyPreset(data); }catch(err){ alert("Bad preset file"); }
+  };
+  r.readAsText(f); e.target.value="";
+};
+
+function buildHelpPanel(){
+  const g=document.createElement("div"); g.className="group collapsed";
+  g.innerHTML='<h3>Keys &amp; notes</h3>';
+  g.querySelector("h3").onclick=()=>g.classList.toggle("collapsed");
+  const b=document.createElement("div"); b.className="gbody";
+  b.innerHTML=`<p class="note">
+  <kbd>space</kbd> play / pause<br>
+  <kbd>←</kbd> <kbd>→</kbd> step one frame<br>
+  <kbd>[</kbd> <kbd>]</kbd> set in / out point<br>
+  <kbd>r</kbd> record · <kbd>s</kbd> save frame<br>
+  <kbd>1…9</kbd> load built-in preset<br>
+  <kbd>esc</kbd> stop an export or recording<br>
+  double-click a slider label to reset it
+  </p>
+  <p class="note">Pixel size controls chunkiness: the frame is processed at width ÷ pixel size, then blown up with nearest-neighbour, so dithering stays crisp.</p>
+  <p class="note"><b>Record</b> captures in real time from the canvas, writing MP4 (H.264) where the browser supports it and WebM otherwise; keeps the original audio. If the render can't hold the export fps, lower the width or raise pixel size.</p>
+  <p class="note"><b>Export MP4</b> encodes H.264 with WebCodecs, seeking frame by frame — nothing is dropped however heavy the effect is, and audio is re-encoded to AAC. Needs WebCodecs (Chrome, Edge, recent Firefox/Zen). This is the one to use for finished pieces.</p>
+  <p class="note">Each exported frame is checked against the decoded source before it is encoded, and re-grabbed if the browser had not painted it yet — so a heavy effect or a slow seek can never write blank frames into the file.</p>
+  <p class="note"><b>PNG sequence</b> is lossless frames for a colour-managed grade.</p>
+  <p class="note">While an export runs, its button becomes the stop control — click it or press <kbd>esc</kbd>. A stopped PNG sequence keeps every frame already written; a stopped MP4 is still muxed and saved, marked <i>_partial</i>, so a long encode is never wasted.</p>
+  <p class="note">A / B transitions run inside the export — set a wipe or dissolve and the render carries the reveal, so there is no second pass to cut against in the edit.</p>
+  <p class="note">Blocks: hit <b>Draw blocks</b>, then drag on empty canvas to add one. While drawing is active each block carries a centre handle to move it and four corner handles to resize it; click to select, <kbd>⌫</kbd> or double-click to remove, <kbd>esc</kbd> to finish. Blocks stay with the footage when you change look.</p>
+  <p class="note">Time displacement and persistence build up over consecutive frames, so scrubbing around shows them mid-thought; play through, or export, and they settle. Exports pre-roll the history first.</p>
+  <p class="note">8-bit quantises colour to a hardware palette. Pixel size sets the chunkiness, dither amount decides how hard the screen works to fake the missing colours, and attribute clash limits each cell to two of them — the Spectrum tell. On <b>auto</b> the palette is read from the picture; hit <b>Lock palette</b> once a shot looks right so it stops drifting.</p>
+  <p class="note">Smear lines: hit <b>Draw lines</b> in SMEAR, then drag down the canvas for a vertical line that bleeds sideways, or across for a horizontal one that bleeds up or down. Drag a line to move it, its ends to resize, <kbd>⌫</kbd> or double-click to remove. <b>After effect</b> streaks the finished frame; <b>before effect</b> streaks the picture first, so the smear gets dithered too.</p>
+  <p class="note">Highlight bleed drags anything brighter than the highlight level across the frame. Push it hard with <b>add</b> blending and a tint for burnt-out, overdriven light.</p>
+  <p class="note">LCD mode: pixel pitch sets the screen resolution, and the drop shadow is what sells it — keep it offset down and to the right, and soft. Use <b>threshold</b> dither for bold silhouettes like the old games, or Atkinson for real footage. The glass texture is fixed to the screen, not the picture, so it stays put while the video moves.</p>
+  <p class="note">Riso mode prints ink on paper, so it wants a light paper colour and the multiply blend — selecting it swaps a black paper for stock automatically. Misregistration is what sells it: 4–12px, and a coarser pixel size than you would use for a straight dither.</p>
+  <p class="note">Everything is local. No uploads, no server.</p>`;
+  g.append(b); $("#panelR").append(g);
+}
+
+/* ====================================================================== */
+/*  INPUT WIRING                                                          */
+/* ====================================================================== */
+$("#btnOpen").onclick=()=>$("#fileIn").click();
+$("#fileIn").onchange=e=>{ const f=e.target.files[0]; if(f) loadFile(f); e.target.value=""; };
+$("#btnCam").onclick=startCam;
+
+const drop=$("#drop");
+addEventListener("dragover",e=>{ e.preventDefault(); drop.classList.remove("hide"); drop.classList.add("hot"); });
+addEventListener("dragleave",e=>{ if(e.relatedTarget) return; drop.classList.remove("hot"); if(srcReady) drop.classList.add("hide"); });
+addEventListener("drop",e=>{
+  e.preventDefault(); drop.classList.remove("hot");
+  const f=[...e.dataTransfer.files].find(f=>f.type.startsWith("video/")||/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name));
+  if(f) loadFile(f); else if(srcReady) drop.classList.add("hide");
+});
+drop.onclick=()=>$("#fileIn").click();
+
+addEventListener("keydown",e=>{
+  if(/input|select|textarea/i.test(e.target.tagName)) return;
+  const k=e.key;
+  if((k==="Backspace"||k==="Delete") && drawingMask){
+    if(deleteSelectedBlock()){ e.preventDefault(); return; }
+  }
+  if((k==="Backspace"||k==="Delete") && drawingLines){
+    if(deleteSelectedLine()){ e.preventDefault(); return; }
+  }
+  if(k==="Escape"){
+    if(drawingMask){ setDrawMask(false); e.preventDefault(); return; }
+    if(drawingLines){ setDrawLines(false); e.preventDefault(); return; }
+    if(cancelExport()) e.preventDefault();
+    return;
+  }
+  if(k===" "){ e.preventDefault(); togglePlay(); }
+  else if(k==="ArrowRight"){ e.preventDefault(); step(+1); }
+  else if(k==="ArrowLeft"){ e.preventDefault(); step(-1); }
+  else if(k==="["){ $("#btnIn").click(); }
+  else if(k==="]"){ $("#btnOut").click(); }
+  else if(k==="r"){ $("#btnRec").click(); }
+  else if(k==="s"){ $("#btnPng").click(); }
+  else if(/^[1-9]$/.test(k)){ const n=Object.keys(BUILTIN)[+k-1]; if(n) applyPreset(BUILTIN[n]); }
+});
+
+/* ------------------------------------------------------------------ boot */
+buildUI();
+refreshAll();
+resizeOutput();
+octx.fillStyle="#000"; octx.fillRect(0,0,out.width,out.height);
+</script>
+</body>
+</html>
